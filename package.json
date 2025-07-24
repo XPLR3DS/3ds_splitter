@@ -1,0 +1,15 @@
+{
+  "dependencies": {
+    "@gltf-transform/core": "^0.12.16",
+    "@gltf-transform/extensions": "^0.12.16",
+    "@gltf-transform/functions": "^0.12.16",
+    "@types/core-js": "^2.5.8",
+    "draco3dgltf": "^1.5.7",
+    "meshoptimizer": "^0.16.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.13",
+    "ts-node": "^10.2.1",
+    "tsx": "^4.20.3"
+  }
+}

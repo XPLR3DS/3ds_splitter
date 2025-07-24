@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+        "lib": ["ES2020"],
+        "noImplicitAny": true,
+        "removeComments": true,
+        "preserveConstEnums": true,
+        "sourceMap": true
+    },
+    "files":[
+      "splitter_multi.ts"
+    ]
+}
