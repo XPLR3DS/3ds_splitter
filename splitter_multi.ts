@@ -6,16 +6,16 @@ import * as fs from 'fs/promises';
 import { error } from 'console';
 import { write } from 'fs';
 
-// const FILENAME = "msc22032"
-// const IN = './msc/' + FILENAME+ ".glb";
-// const OUT = './msc/output/' + FILENAME
+const FILENAME = "msc22032"
+const IN = './msc/' + FILENAME+ ".glb";
+const OUT = './msc/output/' + FILENAME
 
-const FILENAME = "mrg"
-const IN = './MRG/MRG-GRM-MAI-ZZ-M3-AR-000001_ACC_FederatedModel.glb';
-const OUT = './MRG/output/' + FILENAME
+// const FILENAME = "mrg"
+// const IN = './MRG/MRG-GRM-MAI-ZZ-M3-AR-000001_ACC_FederatedModel.glb';
+// const OUT = './MRG/output/' + FILENAME
 
 
-const mem_threshold = 40000000;
+const mem_threshold = 40000;
 // const mem_threshold = 40000000;
 
 interface AttributeData {
@@ -47,7 +47,16 @@ interface AttributeNode {
     const seg_count = Array(sysSeg).fill(0);
     const document = io.read(IN);
     const sorted = sort_by_threshold(document ,mem_threshold);
-    console.log(sorted.length)
+    // console.log(sorted.length)
+    //
+    console.log("Original Doc")
+    console.log("____________________________________________________________________________________________________ \n")
+    console.log("nodelist" ,document.getRoot().listNodes().length)
+    console.log("accessorslist" ,document.getRoot().listAccessors().length)
+    console.log("mesheslist" ,document.getRoot().listMeshes().length)
+    console.log("sceneslist" ,document.getRoot().listScenes().length)
+    console.log("cameraslist" ,document.getRoot().listCameras().length)
+    console.log("materialsList" ,document.getRoot().listMaterials().length)
     // console.log(sorted[0][0].getName());
     const doc_list = writeNewDocuments(document,sorted,io);
 
@@ -69,8 +78,10 @@ interface AttributeNode {
     // console.log(sorted)
     const doc_list : Array<Document> = [];
     console.log("sorted legnth", sorted.length);
-    sorted.forEach((newFile,index)=>{
-      const newDoc = document.clone();
+    sorted.forEach((sorted_meshes,index)=>{
+      const newDoc = new Document;
+      const tmpAccessor = newDoc.createAccessor()
+      const scene = newDoc.createScene();
       const sourceMeshMap = new Map();
       document.getRoot().listMeshes().forEach(mesh =>{
         sourceMeshMap.set(mesh.getName(),mesh)
@@ -78,7 +89,7 @@ interface AttributeNode {
 
       let meshNamesToKeep : Array<string>= [];
 
-      newFile.forEach((mesh)=>{
+      sorted_meshes.forEach((mesh)=>{
         meshNamesToKeep.push(mesh.getName())
       })
 
@@ -91,18 +102,37 @@ interface AttributeNode {
 
         console.log("newdoc meshes length initial",
                     newDoc.getRoot().listMeshes().length)
-        newDoc.getRoot().listMeshes().forEach((targetMesh) => {
+        document.getRoot().listMeshes().forEach((targetMesh) => {
           const sourceMesh = sourceMeshMap.get(targetMesh.getName());
 
-        if (!sourceMesh || !meshNamesToKeep.includes(targetMesh.getName())){
-          console.log("exlucded" ,targetMesh.getName())
-          targetMesh.dispose();
-          targetMesh.detach();
+        let node_checker = (arr : Array<Node>, target : Array<Node>) => target.every(v => arr.includes(v));
+        if (sourceMesh && meshNamesToKeep.includes(targetMesh.getName())){
+          // assume that targetParentNodes is always length 1
+          const targetParentNodes = targetMesh.listParents().filter((p)=> p instanceof Node)
+          // console.log("--------------------------------------------------"
+          // ,targetParentNodes.length);
+          if (node_checker(targetParentNodes,scene.listChildren()) && targetParentNodes.length == 1){
+            // const newNode = newDoc.createNode(targetParentNodes[0].getName());
+            // // scene.addChild(newNode)
+            // const newMesh = newDoc.createMesh(targetMesh.getName());
+            // // newNode.setMesh(targetMesh);
+            const primatives = targetMesh.listPrimitives() 
+            targetMesh.listPrimitives().forEach((prim)=>{
+              for ( const semantic of prim.listSemantics()){
+                  tmpAccessor.copy(prim.getAttribute(semantic))
+              }
+            //   const newPrim = newDoc.createPrimitive()
+            //   .setAttribute("POSITION",prim.getAttribute('POSITION'))
+            //   .setAttribute("TEXTCOORD_0",prim.getAttribute("TEXTCOORD_0"));
+            //   newMesh.addPrimitive(prim);
+
+          });
+          // newNode.setMesh(newMesh);
+          // const newMesh = newDoc.createMesh(targetMesh.getName());
+          // newMesh.copy(targetMesh)
          }else{
            // console.log("included",targetMesh.getName())
          }
-
-        console.log("newdoc meshes length",newDoc.getRoot().listMeshes().length)
         // newFile.forEach((mesh) =>{
         //   // console.log("oldmesh",mesh)
         //   newDoc.getRoot().listMeshes().forEach((newMesh)=>{
@@ -114,8 +144,15 @@ interface AttributeNode {
         //   })
         // })
         // console.log(mesh.getName())
+        }
       })
-
+  console.log("file number", index, "-------------------- \n")
+      console.log("nodelist" ,newDoc.getRoot().listNodes().length)
+      console.log("accessorslist" ,newDoc.getRoot().listAccessors().length)
+      console.log("mesheslist" ,newDoc.getRoot().listMeshes().length)
+      console.log("sceneslist" ,newDoc.getRoot().listScenes().length)
+      console.log("cameraslist" ,newDoc.getRoot().listCameras().length)
+      console.log("materialsList" ,newDoc.getRoot().listMaterials().length)
       // writeFile(newDoc,index,io)
     })
     // accessor.
