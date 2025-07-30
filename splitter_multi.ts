@@ -21,12 +21,16 @@ interface Config {
   inputPath: string;
   outputPath: string;
   fileName: string;
+  inputPathBin: string;
+  inputPathGLTF: string;
   threshold: number;
 }
 
 const command = new Command();
 
-command.requiredOption('-i, --input <path>', 'input GLB file path')
+command.option('-i, --inputglb <path>', 'input GLB file path')
+    .option('-b, --inputbin <path>', 'i')
+    .option('-g, --inputgltf  <path>', 'i')
     .option('-o, --output <path>', 'output directory path " defaults to ./ "',"./")
     .requiredOption('-n, --name <name>', 'base filename ')
     .option('-m, --threshold <number>','target memory_threshold for each file " defaults to 40000000','40000000')
@@ -37,16 +41,28 @@ const config: Config = {
       fileName: command.opts().name,
       inputPath: command.opts().input,
       outputPath: command.opts().output,
-      threshold: command.opts().threshold
+      threshold: command.opts().threshold,
+      inputPathGLTF: command.opts().inputbin,
+      inputPathBin: command.opts().inputPathGLTF
 }
-
 const mem_threshold = Number(config.threshold);
 
 if(mem_threshold == null){
 throw new Error("Memory threshold broken")
 }
+
 const FILENAME =  config.fileName;
-const IN = config.inputPath;
+  if( config.inputPath == null){
+    // if( config.inputPathGLTF == null){
+      throw new Error("inputPath or inputPathGLTF required");
+    // }else
+      if( config.inputPathBin == null){
+      throw new Error("gltf binary not provided")
+    }
+  }
+const IN_GLTF = config.inputPathGLTF;
+const IN_BIN = config.inputPathBin;
+const IN_GLB = config.inputPath;
 const OUTPATH = config.outputPath;
 const OUT = config.outputPath + FILENAME;
 
@@ -103,12 +119,23 @@ interface Manifest {
         'meshopt.encoder': MeshoptEncoder,
       });
     // const symSegs = Math.ceil(fs.stat(IN).size / 80);
-    const stats = await fs.stat(IN);
+    // const stats = await fs.stat(IN);
     // console.log("Data here",stats.size);
-    const sysSeg = Math.floor(stats.size / Math.pow(10,6));
+    // const sysSeg = Math.floor(stats.size / Math.pow(10,6));
     // console.log("systemSegments", sysSeg);
-    const seg_count = Array(sysSeg).fill(0);
-    const document = await io.read(IN);
+    // const seg_count = Array(sysSeg).fill(0);
+    const input = IN_GLB || IN_GLTF || IN_GLB;
+    // const readDoc: Promise<Document> = async () =>{
+      // if(IN_GLB != null){
+        return await io.read(input);
+      // }else if(IN_GLTF != null){
+      //   return await io.readJSON(IN_GLTF)
+      // }
+      // throw new Error()
+    // }
+
+    // const document = await readDoc()
+    const document = await io.read(input)
     const sorted = sort_by_threshold(document ,mem_threshold);
     console.log("Original Doc")
     console.log("____________________________________________________________________________________________________ \n")
@@ -122,7 +149,7 @@ interface Manifest {
     // createPartitions(document,sorted)
     const doc_list = writeNewDocuments(document,sorted,io);
     console.log("doclist",doc_list);
-    const manifest = makeManifest(doc_list,document);
+    const manifest = makeManifest(input,doc_list,document);
   } catch (error) {
       console.error('Script failed:', error);
       process.exit(1);
@@ -137,9 +164,9 @@ interface Manifest {
 //     console.log(document.getRoot().listBuffers())
 //   }
 
-  async function makeManifest(doc_list: Array<string>, document: Document) {
+  async function makeManifest(input: any,doc_list: Array<string>, document: Document) {
     const manifest : Manifest = {
-      inputFile: IN,
+      inputFile: input,
       converterApplication: '3dssplitter',
       converterApplicationVersion: '0.0.1',
       conversionDate: "",
