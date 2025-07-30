@@ -1,8 +1,8 @@
 {
   "dependencies": {
-    "@gltf-transform/core": "^0.12.16",
-    "@gltf-transform/extensions": "^0.12.16",
-    "@gltf-transform/functions": "^0.12.16",
+    "@gltf-transform/core": "^4.2.1",
+    "@gltf-transform/extensions": "^4.2.1",
+    "@gltf-transform/functions": "^4.2.1",
     "@types/core-js": "^2.5.8",
     "commander": "^14.0.0",
     "draco3dgltf": "^1.5.7",
