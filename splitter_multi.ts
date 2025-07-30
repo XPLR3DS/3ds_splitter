@@ -4,7 +4,7 @@ import { Document, Node, NodeIO, Primitive ,Mesh, vec3} from '@gltf-transform/co
 import * as gtf from '@gltf-transform/functions';
 import * as fs from 'fs/promises';
 import { error } from 'console';
-import { write } from 'fs';
+import { write, existsSync, mkdirSync } from 'fs';
 import { Command } from 'commander';
 
 // const FILENAME = "msc22032"
@@ -47,7 +47,9 @@ throw new Error("Memory threshold broken")
 }
 const FILENAME =  config.fileName;
 const IN = config.inputPath;
+const OUTPATH = config.outputPath;
 const OUT = config.outputPath + FILENAME;
+
 
 
 interface AttributeData {
@@ -85,6 +87,11 @@ interface Manifest {
 
 (async () => {
 
+  var dir = __dirname +"/"+ config.outputPath;
+  console.log("directory",dir);
+  if (!existsSync(dir)) {
+      mkdirSync(dir,{ recursive : true});
+  }
   try {
     await MeshoptDecoder.ready;
     await MeshoptEncoder.ready;
