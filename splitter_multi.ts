@@ -48,7 +48,7 @@ const config: Config = {
 const mem_threshold = Number(config.threshold);
 
 if(mem_threshold == null){
-throw new Error("Memory threshold broken")
+  throw new Error("Memory threshold broken")
 }
 
 const FILENAME =  config.fileName;
@@ -155,7 +155,7 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
       });
 
     const document = await readDoc(io)
-    console.log(document)
+    // console.log(document)
     // const symSegs = Math.ceil(fs.stat(IN).size / 80);
     // const stats = await fs.stat(IN);
     // console.log("Data here",stats.size);
