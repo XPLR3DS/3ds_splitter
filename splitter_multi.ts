@@ -4,7 +4,7 @@ import { Document, Node, NodeIO, Primitive ,Mesh, vec3} from '@gltf-transform/co
 import * as gtf from '@gltf-transform/functions';
 import * as fs from 'fs/promises';
 import { error } from 'console';
-import { write, existsSync, mkdirSync } from 'fs';
+import { write, existsSync, mkdirSync, read } from 'fs';
 import { Command } from 'commander';
 
 // const FILENAME = "msc22032"
@@ -18,10 +18,10 @@ import { Command } from 'commander';
 const CLI = new Command();
 
 interface Config {
-  inputPath: string;
+  inputPathGLB: string;
   outputPath: string;
   fileName: string;
-  inputPathBin: string;
+  inputPathBIN: string;
   inputPathGLTF: string;
   threshold: number;
 }
@@ -29,8 +29,8 @@ interface Config {
 const command = new Command();
 
 command.option('-i, --inputglb <path>', 'input GLB file path')
-    .option('-b, --inputbin <path>', 'i')
-    .option('-g, --inputgltf  <path>', 'i')
+    .option('-b, --inputbin <path>', 'input BIN file path')
+    .option('-g, --inputgltf <path>', 'input GLTF file path')
     .option('-o, --output <path>', 'output directory path " defaults to ./ "',"./")
     .requiredOption('-n, --name <name>', 'base filename ')
     .option('-m, --threshold <number>','target memory_threshold for each file " defaults to 40000000','40000000')
@@ -39,11 +39,11 @@ command.option('-i, --inputglb <path>', 'input GLB file path')
 
 const config: Config = {
       fileName: command.opts().name,
-      inputPath: command.opts().input,
+      inputPathGLB: command.opts().inputglb,
       outputPath: command.opts().output,
       threshold: command.opts().threshold,
-      inputPathGLTF: command.opts().inputbin,
-      inputPathBin: command.opts().inputPathGLTF
+      inputPathGLTF: command.opts().inputgltf,
+      inputPathBIN: command.opts().inputbin
 }
 const mem_threshold = Number(config.threshold);
 
@@ -52,17 +52,9 @@ throw new Error("Memory threshold broken")
 }
 
 const FILENAME =  config.fileName;
-  if( config.inputPath == null){
-    // if( config.inputPathGLTF == null){
-      throw new Error("inputPath or inputPathGLTF required");
-    // }else
-      if( config.inputPathBin == null){
-      throw new Error("gltf binary not provided")
-    }
-  }
 const IN_GLTF = config.inputPathGLTF;
-const IN_BIN = config.inputPathBin;
-const IN_GLB = config.inputPath;
+const IN_BIN = config.inputPathBIN;
+const IN_GLB = config.inputPathGLB;
 const OUTPATH = config.outputPath;
 const OUT = config.outputPath + FILENAME;
 
@@ -101,6 +93,49 @@ interface Manifest {
   errors: Array<string>,
 }
 
+async function readDoc(io: NodeIO):  Promise<Document>  {
+  if(IN_GLB !== undefined){
+    try{
+      return await io.read(IN_GLB);
+    }catch(e){
+      throw new Error(e + " \n failed to load glb")
+      process.exit(1);
+    }
+  }else if(IN_GLTF !== undefined && IN_BIN !== undefined ){
+    try{
+      return await io.read(IN_GLTF)
+      // console.log(IN_GLTF);
+      // const gltf = await io.readAsJSON(IN_GLTF);
+      // const binfile = await fs.readFile(IN_BIN)
+      // const bin = await io.readBinary(binfile);
+      // const doc = io.readJSON(gltf);
+      // console.log("document", doc, "\n", "bin", bin);
+      // gtf.copyToDocument(doc,bin,bin.getRoot())
+
+    }catch(e){
+      throw new Error(e + " \n failed to load gltf")
+      process.exit(1);
+    }
+  }
+  throw new Error()
+  process.exit(1);
+}
+
+// async function readDoc(io: NodeIO):Document{
+//   try{
+//     if( IN_GLB == null ){
+//       if(IN_BIN == null || IN_GLTF == null){
+
+//       }
+//     }else{
+//       return await io.read(IN_GLB);
+//     }
+//   }catch(e){
+//     throw new Error(e);
+//   }
+//   throw new Error("something unexpected happened in readDoc")
+// }
+
 (async () => {
 
   var dir = __dirname +"/"+ config.outputPath;
@@ -118,24 +153,22 @@ interface Manifest {
         'meshopt.decoder': MeshoptDecoder,
         'meshopt.encoder': MeshoptEncoder,
       });
+
+    const document = await readDoc(io)
+    console.log(document)
     // const symSegs = Math.ceil(fs.stat(IN).size / 80);
     // const stats = await fs.stat(IN);
     // console.log("Data here",stats.size);
+    // const MSCGLTF = fs.readFile("./MSC/MSC22032_local.gltf")
+    // const MSCBIN = fs.readFile("./MSC/MSC22032_local.bin")
     // const sysSeg = Math.floor(stats.size / Math.pow(10,6));
     // console.log("systemSegments", sysSeg);
     // const seg_count = Array(sysSeg).fill(0);
-    const input = IN_GLB || IN_GLTF || IN_GLB;
-    // const readDoc: Promise<Document> = async () =>{
-      // if(IN_GLB != null){
-        return await io.read(input);
-      // }else if(IN_GLTF != null){
-      //   return await io.readJSON(IN_GLTF)
-      // }
-      // throw new Error()
-    // }
+    // const input = IN_GLB || IN_GLTF || IN_GLB;
+
 
     // const document = await readDoc()
-    const document = await io.read(input)
+    // const document = await io.read(IN_GLB)
     const sorted = sort_by_threshold(document ,mem_threshold);
     console.log("Original Doc")
     console.log("____________________________________________________________________________________________________ \n")
@@ -149,7 +182,7 @@ interface Manifest {
     // createPartitions(document,sorted)
     const doc_list = writeNewDocuments(document,sorted,io);
     console.log("doclist",doc_list);
-    const manifest = makeManifest(input,doc_list,document);
+    const manifest = makeManifest(IN_GLB,doc_list,document);
   } catch (error) {
       console.error('Script failed:', error);
       process.exit(1);
