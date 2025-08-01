@@ -1,6 +1,6 @@
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { Document, Node, NodeIO, Primitive ,Mesh, vec3} from '@gltf-transform/core';
+import { Document, Node, NodeIO, Primitive ,Mesh, PropertyType ,vec3} from '@gltf-transform/core';
 import * as gtf from '@gltf-transform/functions';
 import * as fs from 'fs/promises';
 import { error } from 'console';
@@ -99,7 +99,6 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
       return await io.read(IN_GLB);
     }catch(e){
       throw new Error(e + " \n failed to load glb")
-      process.exit(1);
     }
   }else if(IN_GLTF !== undefined && IN_BIN !== undefined ){
     try{
@@ -114,11 +113,9 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
 
     }catch(e){
       throw new Error(e + " \n failed to load gltf")
-      process.exit(1);
     }
   }
   throw new Error()
-  process.exit(1);
 }
 
 // async function readDoc(io: NodeIO):Document{
@@ -139,11 +136,11 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
 (async () => {
 
   var dir = __dirname +"/"+ config.outputPath;
-  console.log("directory",dir);
+  // console.log("directory",dir);
   if (!existsSync(dir)) {
       mkdirSync(dir,{ recursive : true});
   }
-  try {
+  // try {
     await MeshoptDecoder.ready;
     await MeshoptEncoder.ready;
 
@@ -155,7 +152,13 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
       });
 
     const document = await readDoc(io)
-    // console.log(document)
+    // document.getRoot().listNodes().forEach((node)=>{
+    //   console.log(node.getName())
+    //   if(node.getName() != "rootNode"){
+    //     if(node.getMesh().getName() == null)
+    //     console.log(node.getMesh().getName())
+    //   }
+    // })
     // const symSegs = Math.ceil(fs.stat(IN).size / 80);
     // const stats = await fs.stat(IN);
     // console.log("Data here",stats.size);
@@ -169,7 +172,34 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
 
     // const document = await readDoc()
     // const document = await io.read(IN_GLB)
-    const sorted = sort_by_threshold(document ,mem_threshold);
+    // console.log(gtf.getBounds(document.getRoot().getDefaultScene()))
+    // console.log(gtf.getBounds(document.getRoot().getDefaultScene()))
+
+    // If there is no default scene, set the first
+    // scene in the scene list to be the default scene
+    if (document.getRoot().getDefaultScene()== null){
+      document.getRoot().setDefaultScene(document.getRoot().listScenes()[0])
+    }
+    // attach loose nodes to the default scene
+    const nullmesh : Array<string> = [];
+    for(const node of document.getRoot().listNodes()){
+      if (!document.getRoot().getDefaultScene().listChildren().includes(node)  &&
+            node.getName() != "rootNode" &&
+            node.getMesh() != null){
+        console.log("added ",node.getName()," to default scene");
+        document.getRoot().getDefaultScene().addChild(node);
+      }
+      if (node.getMesh() == null ){
+        nullmesh.push(node.getName());
+      }else{
+            console.log(node.getMesh().getName())
+          if (node.getMesh().getName() == null){
+            node.getMesh().setName(node.getName())
+          }
+      }
+    }
+    console.log("nullmesh\n",nullmesh,"\n")
+
     console.log("Original Doc")
     console.log("____________________________________________________________________________________________________ \n")
     console.log("nodelist" ,document.getRoot().listNodes().length)
@@ -178,15 +208,26 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
     console.log("sceneslist" ,document.getRoot().listScenes().length)
     console.log("cameraslist" ,document.getRoot().listCameras().length)
     console.log("materialsList" ,document.getRoot().listMaterials().length)
+    // Use to check if there are detatched elements
+    // await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH]})) ;
+    await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH,PropertyType.NODE]})) ;
+    console.log("\n\n after prune\n\n__________________________________________________________________________________________________ \n")
+    console.log("nodelist" ,document.getRoot().listNodes().length)
+    console.log("accessorslist" ,document.getRoot().listAccessors().length)
+    console.log("mesheslist" ,document.getRoot().listMeshes().length)
+    console.log("sceneslist" ,document.getRoot().listScenes().length)
+    console.log("cameraslist" ,document.getRoot().listCameras().length)
+    console.log("materialsList" ,document.getRoot().listMaterials().length)
+    const sorted = sort_by_threshold(document ,mem_threshold);
+
     // console.log(sorted[0][0].getName());
     // createPartitions(document,sorted)
     const doc_list = writeNewDocuments(document,sorted,io);
     console.log("doclist",doc_list);
     const manifest = makeManifest(IN_GLB,doc_list,document);
-  } catch (error) {
-      console.error('Script failed:', error);
-      process.exit(1);
-    }
+  // } catch (e) {
+  //     throw new Error('Script failed:\n'+ e);
+  //   }
   })();
 
 //   async function createPartitions (document: Document, sorted : Array<Array<Mesh>>) {
@@ -198,7 +239,12 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
 //   }
 
   async function makeManifest(input: any,doc_list: Array<string>, document: Document) {
-    const manifest : Manifest = {
+      const { min = null, max = null } = gtf.getBounds?.(document.getRoot().getDefaultScene()) ?? {
+       min: null,
+       max: null
+      };
+
+      const manifest : Manifest = {
       inputFile: input,
       converterApplication: '3dssplitter',
       converterApplicationVersion: '0.0.1',
@@ -214,8 +260,8 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
       numGlftTrianglesIncludingReused: 0,
       numCreatedMetaObjects: 0,
       numExportedPropertySetsOrElementQuantities: 0,
-      modelBoundsMax: gtf.getBounds(document.getRoot().getDefaultScene()).max,
-      modelBoundsMin: gtf.getBounds(document.getRoot().getDefaultScene()).min,
+      modelBoundsMax: max,
+      modelBoundsMin: min,
       generalMessages: [],
       warnings: [],
       errors: []
@@ -241,10 +287,11 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
       document.getRoot().listNodes().forEach(node =>{
       if(node.getName() != "rootNode" && node.getName() != null){
         try{
-          // console.log(node.getMesh().getName())
+
         sourceNodeMap.set(node.getMesh().getName(),node)
         }catch(e){
-          console.log(e)
+          console.log(node.getMesh())
+          throw new Error(node.getName()+"\n"+e);
         }
       }
     })
@@ -292,8 +339,19 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
         const copyResolver = gtf.createDefaultPropertyResolver(newDoc, document);
 
         // gtf.copyToDocument(newDoc,document,document.getRoot().listScenes())
+        try{
         const map = gtf.copyToDocument(newDoc,document,nodelist)
         gtf.copyToDocument(newDoc,document,document.getRoot().listCameras(),copyResolver)
+        }catch(e){
+          const nodenamelist : Array<string>= [];
+          for(const no of nodelist){
+            if(no != undefined){
+            console.log(typeof no)
+            nodenamelist.push(no);
+            }
+          }
+          throw new Error(e)
+        }
         for (const node of newDoc.getRoot().listNodes()){
           newDoc.getRoot().getDefaultScene().addChild(node);
         }
@@ -366,7 +424,7 @@ function sort_by_threshold(document: Document, mem_threshold: number):Array<Arra
               bin.push(mesh);
             }
           }catch(e){
-            console.error(e);
+            throw new Error(e);
           }
         })
         splitBin.push(bin);
