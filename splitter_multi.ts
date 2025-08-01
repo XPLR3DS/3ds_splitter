@@ -152,28 +152,14 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
       });
 
     const document = await readDoc(io)
-    // document.getRoot().listNodes().forEach((node)=>{
-    //   console.log(node.getName())
-    //   if(node.getName() != "rootNode"){
-    //     if(node.getMesh().getName() == null)
-    //     console.log(node.getMesh().getName())
-    //   }
-    // })
-    // const symSegs = Math.ceil(fs.stat(IN).size / 80);
-    // const stats = await fs.stat(IN);
-    // console.log("Data here",stats.size);
-    // const MSCGLTF = fs.readFile("./MSC/MSC22032_local.gltf")
-    // const MSCBIN = fs.readFile("./MSC/MSC22032_local.bin")
-    // const sysSeg = Math.floor(stats.size / Math.pow(10,6));
-    // console.log("systemSegments", sysSeg);
-    // const seg_count = Array(sysSeg).fill(0);
-    // const input = IN_GLB || IN_GLTF || IN_GLB;
 
-
-    // const document = await readDoc()
-    // const document = await io.read(IN_GLB)
-    // console.log(gtf.getBounds(document.getRoot().getDefaultScene()))
-    // console.log(gtf.getBounds(document.getRoot().getDefaultScene()))
+      // File stats
+      // const symSegs = Math.ceil(fs.stat(IN).size / 80);
+      // const stats = await fs.stat(IN);
+      // console.log("Data here",stats.size);
+      // const sysSeg = Math.floor(stats.size / Math.pow(10,6));
+      // console.log("systemSegments", sysSeg);
+      // const seg_count = Array(sysSeg).fill(0);
 
     // If there is no default scene, set the first
     // scene in the scene list to be the default scene
@@ -186,44 +172,44 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
       if (!document.getRoot().getDefaultScene().listChildren().includes(node)  &&
             node.getName() != "rootNode" &&
             node.getMesh() != null){
-        console.log("added ",node.getName()," to default scene");
+        // console.log("added ",node.getName()," to default scene");
         document.getRoot().getDefaultScene().addChild(node);
       }
       if (node.getMesh() == null ){
         nullmesh.push(node.getName());
       }else{
-            console.log(node.getMesh().getName())
+            // console.log(node.getMesh().getName())
           if (node.getMesh().getName() == null){
             node.getMesh().setName(node.getName())
           }
       }
     }
-    console.log("nullmesh\n",nullmesh,"\n")
+      // console.log("nullmesh\n",nullmesh,"\n")
 
-    console.log("Original Doc")
-    console.log("____________________________________________________________________________________________________ \n")
-    console.log("nodelist" ,document.getRoot().listNodes().length)
-    console.log("accessorslist" ,document.getRoot().listAccessors().length)
-    console.log("mesheslist" ,document.getRoot().listMeshes().length)
-    console.log("sceneslist" ,document.getRoot().listScenes().length)
-    console.log("cameraslist" ,document.getRoot().listCameras().length)
-    console.log("materialsList" ,document.getRoot().listMaterials().length)
+      // console.log("Original Doc")
+      // console.log("____________________________________________________________________________________________________ \n")
+      // console.log("nodelist" ,document.getRoot().listNodes().length)
+      // console.log("accessorslist" ,document.getRoot().listAccessors().length)
+      // console.log("mesheslist" ,document.getRoot().listMeshes().length)
+      // console.log("sceneslist" ,document.getRoot().listScenes().length)
+      // console.log("cameraslist" ,document.getRoot().listCameras().length)
+      // console.log("materialsList" ,document.getRoot().listMaterials().length)
     // Use to check if there are detatched elements
     // await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH]})) ;
     await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH,PropertyType.NODE]})) ;
-    console.log("\n\n after prune\n\n__________________________________________________________________________________________________ \n")
-    console.log("nodelist" ,document.getRoot().listNodes().length)
-    console.log("accessorslist" ,document.getRoot().listAccessors().length)
-    console.log("mesheslist" ,document.getRoot().listMeshes().length)
-    console.log("sceneslist" ,document.getRoot().listScenes().length)
-    console.log("cameraslist" ,document.getRoot().listCameras().length)
-    console.log("materialsList" ,document.getRoot().listMaterials().length)
+      // console.log("\n\n after prune\n\n__________________________________________________________________________________________________ \n")
+      // console.log("nodelist" ,document.getroot().listnodes().length)
+      // console.log("accessorslist" ,document.getroot().listaccessors().length)
+      // console.log("mesheslist" ,document.getroot().listmeshes().length)
+      // console.log("sceneslist" ,document.getroot().listscenes().length)
+      // console.log("cameraslist" ,document.getroot().listcameras().length)
+      // console.log("materialsList" ,document.getRoot().listMaterials().length)
     const sorted = sort_by_threshold(document ,mem_threshold);
 
     // console.log(sorted[0][0].getName());
     // createPartitions(document,sorted)
     const doc_list = writeNewDocuments(document,sorted,io);
-    console.log("doclist",doc_list);
+    console.log("Document List:",doc_list);
     const manifest = makeManifest(IN_GLB,doc_list,document);
   // } catch (e) {
   //     throw new Error('Script failed:\n'+ e);
@@ -297,7 +283,7 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
     })
     // console.log(sorted)
     const doc_list : Array<Document> = [];
-    console.log("sorted legnth", sorted.length);
+    // console.log("sorted legnth", sorted.length);
     sorted.forEach((sorted_meshes,index)=>{
       const newDoc = new Document;
 
@@ -346,7 +332,7 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
           const nodenamelist : Array<string>= [];
           for(const no of nodelist){
             if(no != undefined){
-            console.log(typeof no)
+            // console.log(typeof no)
             nodenamelist.push(no);
             }
           }
@@ -359,23 +345,22 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
         // newDoc.transform(gtf.prune());
         // console.log(newDoc.getRoot().listBuffers().length);
         // newDoc.transform(gtf.unpartition());
-        console.log(newDoc.getRoot().listBuffers().length);
 
         // console.log("document root name ",newDoc.getRoot().getName())
         // newDoc.getRoot().setName("rootNode")
         // console.log("document root name ",newDoc.getRoot().getName())
 
-
-    console.log("-------------------- ","file number", index, "-------------------- \n")
-        console.log("nodelist" ,newDoc.getRoot().listNodes().length)
-        console.log("bufferlist",newDoc.getRoot().listBuffers().length)
-        console.log("accessorslist" ,newDoc.getRoot().listAccessors().length)
-        console.log("mesheslist" ,newDoc.getRoot().listMeshes().length)
-        console.log("sceneslist" ,newDoc.getRoot().listScenes().length)
-        console.log("cameraslist" ,newDoc.getRoot().listCameras().length)
-        console.log("materialsList" ,newDoc.getRoot().listMaterials().length)
-      console.log("____________________________________________________________________________________________________ \n"
-      ,"\n\n\n")
+    // Split file stat logging
+    // console.log("-------------------- ","file number", index, "-------------------- \n")
+    //     console.log("nodelist" ,newDoc.getRoot().listNodes().length)
+    //     console.log("bufferlist",newDoc.getRoot().listBuffers().length)
+    //     console.log("accessorslist" ,newDoc.getRoot().listAccessors().length)
+    //     console.log("mesheslist" ,newDoc.getRoot().listMeshes().length)
+    //     console.log("sceneslist" ,newDoc.getRoot().listScenes().length)
+    //     console.log("cameraslist" ,newDoc.getRoot().listCameras().length)
+    //     console.log("materialsList" ,newDoc.getRoot().listMaterials().length)
+    //   console.log("____________________________________________________________________________________________________ \n"
+    //   ,"\n\n\n")
      filename_list.push(writeFile(newDoc,index,io));
     })
     // accessor.
@@ -386,38 +371,34 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
 
 
 
-
+// Sort meshes into bins that are filled by MESH attribute size 
+// this isn't accurate because it doesn't factor in material or textures.
 function sort_by_threshold(document: Document, mem_threshold: number):Array<Array<Mesh>> | null{
     let splitBin: Array<Array<Mesh>> = [];
     let bin: Array<Mesh> = [];
     document.getRoot().listMeshes().forEach((mesh) => {
     let size = 0;
-        // console.log("name",child.getName());
-        // console.log("child",child.getMesh().listPrimitives())
+
           try{
             mesh.listPrimitives().forEach((prim) => {
-              // console.log(" semantics",prim.listSemantics())
-              // console.log(" Count", prim.getAttribute("POSITION").getCount());
 
               prim.listSemantics().forEach((semantics) => {
                 const accessor = prim.getAttribute(semantics);
                 size = size + accessor.getByteLength();
-                const array = accessor.getArray() as Float32Array | Int32Array | Uint32Array | null;
-
-                // console.log("  i bytelength", accessor.getByteLength());
-
+                // const array = accessor.getArray() as Float32Array | Int32Array | Uint32Array | null;
               })
 
             })
+            //if the byte size of the bin and the new mesh is less threshold, the bin should have the mesh added
+            //if the mesh exceeds the total mem_threshold size, it should be placed in its own bin.
+            //if the byte size of the bin and the new mesh is greated than the threshold, the old bin should be added to the 
+            //bin array and the new mesh should be pushed to an empty bin.
             if( bin.reduce((total,node)=> total + size,0) + size < mem_threshold){
-              // console.log("I should trigger the most", size);
               bin.push(mesh);
             }else if (size > mem_threshold){
-              // console.log("I should almost never trigger");
 
               splitBin.push([mesh]);
             }else{
-              // console.log("I shuold trigger infrequently");
               splitBin.push(bin);
               bin = [];
               size = 0;
@@ -431,6 +412,7 @@ function sort_by_threshold(document: Document, mem_threshold: number):Array<Arra
   return splitBin;
 }
 
+//UNUSED
 function setState(document: Document, subArray: Array<Float32Array | Int32Array | Uint32Array | null>){
   for (const mesh of document.getRoot().listMeshes()){
     // console.log(mesh.getName())
@@ -443,6 +425,10 @@ function setState(document: Document, subArray: Array<Float32Array | Int32Array 
     }
   }
 }
+
+
+
+//BELOW ARE SOME IDEAS FOR SPLITTING GLB FILES BASED ON POSITION AND AXES
 
 // function binDimSplit(bbox,axis, document, scene){
 //   const mid = (bbox.max[axis] - bbox.min[axis]) / 2 + bbox.min[axis];
