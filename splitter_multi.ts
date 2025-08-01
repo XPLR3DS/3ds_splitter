@@ -7,14 +7,6 @@ import { error } from 'console';
 import { write, existsSync, mkdirSync, read } from 'fs';
 import { Command } from 'commander';
 
-// const FILENAME = "msc22032"
-// const IN = './msc/' + FILENAME+ ".glb";
-// const OUT = './msc/output/' + FILENAME
-
-// const FILENAME = "mrg"
-// const IN = './MRG/MRG-GRM-MAI-ZZ-M3-AR-000001_ACC_FederatedModel.glb';
-// const OUT = './MRG/output/' + FILENAME
-
 const CLI = new Command();
 
 interface Config {
