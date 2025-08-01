@@ -1,32 +1,28 @@
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { Document, Node, NodeIO, Primitive ,Mesh, vec3} from '@gltf-transform/core';
+import { Document, Node, NodeIO, Primitive ,Mesh, PropertyType ,vec3} from '@gltf-transform/core';
 import * as gtf from '@gltf-transform/functions';
 import * as fs from 'fs/promises';
 import { error } from 'console';
-import { write, existsSync, mkdirSync } from 'fs';
+import { write, existsSync, mkdirSync, read } from 'fs';
 import { Command } from 'commander';
-
-// const FILENAME = "msc22032"
-// const IN = './msc/' + FILENAME+ ".glb";
-// const OUT = './msc/output/' + FILENAME
-
-// const FILENAME = "mrg"
-// const IN = './MRG/MRG-GRM-MAI-ZZ-M3-AR-000001_ACC_FederatedModel.glb';
-// const OUT = './MRG/output/' + FILENAME
 
 const CLI = new Command();
 
 interface Config {
-  inputPath: string;
+  inputPathGLB: string;
   outputPath: string;
   fileName: string;
+  inputPathBIN: string;
+  inputPathGLTF: string;
   threshold: number;
 }
 
 const command = new Command();
 
-command.requiredOption('-i, --input <path>', 'input GLB file path')
+command.option('-i, --inputglb <path>', 'input GLB file path')
+    .option('-b, --inputbin <path>', 'input BIN file path')
+    .option('-g, --inputgltf <path>', 'input GLTF file path')
     .option('-o, --output <path>', 'output directory path " defaults to ./ "',"./")
     .requiredOption('-n, --name <name>', 'base filename ')
     .option('-m, --threshold <number>','target memory_threshold for each file " defaults to 40000000','40000000')
@@ -35,18 +31,22 @@ command.requiredOption('-i, --input <path>', 'input GLB file path')
 
 const config: Config = {
       fileName: command.opts().name,
-      inputPath: command.opts().input,
+      inputPathGLB: command.opts().inputglb,
       outputPath: command.opts().output,
-      threshold: command.opts().threshold
+      threshold: command.opts().threshold,
+      inputPathGLTF: command.opts().inputgltf,
+      inputPathBIN: command.opts().inputbin
 }
-
 const mem_threshold = Number(config.threshold);
 
 if(mem_threshold == null){
-throw new Error("Memory threshold broken")
+  throw new Error("Memory threshold broken")
 }
+
 const FILENAME =  config.fileName;
-const IN = config.inputPath;
+const IN_GLTF = config.inputPathGLTF;
+const IN_BIN = config.inputPathBIN;
+const IN_GLB = config.inputPathGLB;
 const OUTPATH = config.outputPath;
 const OUT = config.outputPath + FILENAME;
 
@@ -85,14 +85,54 @@ interface Manifest {
   errors: Array<string>,
 }
 
+async function readDoc(io: NodeIO):  Promise<Document>  {
+  if(IN_GLB !== undefined){
+    try{
+      return await io.read(IN_GLB);
+    }catch(e){
+      throw new Error(e + " \n failed to load glb")
+    }
+  }else if(IN_GLTF !== undefined && IN_BIN !== undefined ){
+    try{
+      return await io.read(IN_GLTF)
+      // console.log(IN_GLTF);
+      // const gltf = await io.readAsJSON(IN_GLTF);
+      // const binfile = await fs.readFile(IN_BIN)
+      // const bin = await io.readBinary(binfile);
+      // const doc = io.readJSON(gltf);
+      // console.log("document", doc, "\n", "bin", bin);
+      // gtf.copyToDocument(doc,bin,bin.getRoot())
+
+    }catch(e){
+      throw new Error(e + " \n failed to load gltf")
+    }
+  }
+  throw new Error()
+}
+
+// async function readDoc(io: NodeIO):Document{
+//   try{
+//     if( IN_GLB == null ){
+//       if(IN_BIN == null || IN_GLTF == null){
+
+//       }
+//     }else{
+//       return await io.read(IN_GLB);
+//     }
+//   }catch(e){
+//     throw new Error(e);
+//   }
+//   throw new Error("something unexpected happened in readDoc")
+// }
+
 (async () => {
 
   var dir = __dirname +"/"+ config.outputPath;
-  console.log("directory",dir);
+  // console.log("directory",dir);
   if (!existsSync(dir)) {
       mkdirSync(dir,{ recursive : true});
   }
-  try {
+  // try {
     await MeshoptDecoder.ready;
     await MeshoptEncoder.ready;
 
@@ -102,31 +142,70 @@ interface Manifest {
         'meshopt.decoder': MeshoptDecoder,
         'meshopt.encoder': MeshoptEncoder,
       });
-    // const symSegs = Math.ceil(fs.stat(IN).size / 80);
-    const stats = await fs.stat(IN);
-    // console.log("Data here",stats.size);
-    const sysSeg = Math.floor(stats.size / Math.pow(10,6));
-    // console.log("systemSegments", sysSeg);
-    const seg_count = Array(sysSeg).fill(0);
-    const document = await io.read(IN);
+
+    const document = await readDoc(io)
+
+      // File stats
+      // const symSegs = Math.ceil(fs.stat(IN).size / 80);
+      // const stats = await fs.stat(IN);
+      // console.log("Data here",stats.size);
+      // const sysSeg = Math.floor(stats.size / Math.pow(10,6));
+      // console.log("systemSegments", sysSeg);
+      // const seg_count = Array(sysSeg).fill(0);
+
+    // If there is no default scene, set the first
+    // scene in the scene list to be the default scene
+    if (document.getRoot().getDefaultScene()== null){
+      document.getRoot().setDefaultScene(document.getRoot().listScenes()[0])
+    }
+    // attach loose nodes to the default scene
+    const nullmesh : Array<string> = [];
+    for(const node of document.getRoot().listNodes()){
+      if (!document.getRoot().getDefaultScene().listChildren().includes(node)  &&
+            node.getName() != "rootNode" &&
+            node.getMesh() != null){
+        // console.log("added ",node.getName()," to default scene");
+        document.getRoot().getDefaultScene().addChild(node);
+      }
+      if (node.getMesh() == null ){
+        nullmesh.push(node.getName());
+      }else{
+            // console.log(node.getMesh().getName())
+          if (node.getMesh().getName() == null){
+            node.getMesh().setName(node.getName())
+          }
+      }
+    }
+      // console.log("nullmesh\n",nullmesh,"\n")
+
+      // console.log("Original Doc")
+      // console.log("____________________________________________________________________________________________________ \n")
+      // console.log("nodelist" ,document.getRoot().listNodes().length)
+      // console.log("accessorslist" ,document.getRoot().listAccessors().length)
+      // console.log("mesheslist" ,document.getRoot().listMeshes().length)
+      // console.log("sceneslist" ,document.getRoot().listScenes().length)
+      // console.log("cameraslist" ,document.getRoot().listCameras().length)
+      // console.log("materialsList" ,document.getRoot().listMaterials().length)
+    // Use to check if there are detatched elements
+    // await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH]})) ;
+    await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH,PropertyType.NODE]})) ;
+      // console.log("\n\n after prune\n\n__________________________________________________________________________________________________ \n")
+      // console.log("nodelist" ,document.getroot().listnodes().length)
+      // console.log("accessorslist" ,document.getroot().listaccessors().length)
+      // console.log("mesheslist" ,document.getroot().listmeshes().length)
+      // console.log("sceneslist" ,document.getroot().listscenes().length)
+      // console.log("cameraslist" ,document.getroot().listcameras().length)
+      // console.log("materialsList" ,document.getRoot().listMaterials().length)
     const sorted = sort_by_threshold(document ,mem_threshold);
-    console.log("Original Doc")
-    console.log("____________________________________________________________________________________________________ \n")
-    console.log("nodelist" ,document.getRoot().listNodes().length)
-    console.log("accessorslist" ,document.getRoot().listAccessors().length)
-    console.log("mesheslist" ,document.getRoot().listMeshes().length)
-    console.log("sceneslist" ,document.getRoot().listScenes().length)
-    console.log("cameraslist" ,document.getRoot().listCameras().length)
-    console.log("materialsList" ,document.getRoot().listMaterials().length)
+
     // console.log(sorted[0][0].getName());
     // createPartitions(document,sorted)
     const doc_list = writeNewDocuments(document,sorted,io);
-    console.log("doclist",doc_list);
-    const manifest = makeManifest(doc_list,document);
-  } catch (error) {
-      console.error('Script failed:', error);
-      process.exit(1);
-    }
+    console.log("Document List:",doc_list);
+    const manifest = makeManifest(IN_GLB,doc_list,document);
+  // } catch (e) {
+  //     throw new Error('Script failed:\n'+ e);
+  //   }
   })();
 
 //   async function createPartitions (document: Document, sorted : Array<Array<Mesh>>) {
@@ -137,9 +216,14 @@ interface Manifest {
 //     console.log(document.getRoot().listBuffers())
 //   }
 
-  async function makeManifest(doc_list: Array<string>, document: Document) {
-    const manifest : Manifest = {
-      inputFile: IN,
+  async function makeManifest(input: any,doc_list: Array<string>, document: Document) {
+      const { min = null, max = null } = gtf.getBounds?.(document.getRoot().getDefaultScene()) ?? {
+       min: null,
+       max: null
+      };
+
+      const manifest : Manifest = {
+      inputFile: input,
       converterApplication: '3dssplitter',
       converterApplicationVersion: '0.0.1',
       conversionDate: "",
@@ -154,8 +238,8 @@ interface Manifest {
       numGlftTrianglesIncludingReused: 0,
       numCreatedMetaObjects: 0,
       numExportedPropertySetsOrElementQuantities: 0,
-      modelBoundsMax: gtf.getBounds(document.getRoot().getDefaultScene()).max,
-      modelBoundsMin: gtf.getBounds(document.getRoot().getDefaultScene()).min,
+      modelBoundsMax: max,
+      modelBoundsMin: min,
       generalMessages: [],
       warnings: [],
       errors: []
@@ -181,16 +265,17 @@ interface Manifest {
       document.getRoot().listNodes().forEach(node =>{
       if(node.getName() != "rootNode" && node.getName() != null){
         try{
-          // console.log(node.getMesh().getName())
+
         sourceNodeMap.set(node.getMesh().getName(),node)
         }catch(e){
-          console.log(e)
+          console.log(node.getMesh())
+          throw new Error(node.getName()+"\n"+e);
         }
       }
     })
     // console.log(sorted)
     const doc_list : Array<Document> = [];
-    console.log("sorted legnth", sorted.length);
+    // console.log("sorted legnth", sorted.length);
     sorted.forEach((sorted_meshes,index)=>{
       const newDoc = new Document;
 
@@ -232,8 +317,19 @@ interface Manifest {
         const copyResolver = gtf.createDefaultPropertyResolver(newDoc, document);
 
         // gtf.copyToDocument(newDoc,document,document.getRoot().listScenes())
+        try{
         const map = gtf.copyToDocument(newDoc,document,nodelist)
         gtf.copyToDocument(newDoc,document,document.getRoot().listCameras(),copyResolver)
+        }catch(e){
+          const nodenamelist : Array<string>= [];
+          for(const no of nodelist){
+            if(no != undefined){
+            // console.log(typeof no)
+            nodenamelist.push(no);
+            }
+          }
+          throw new Error(e)
+        }
         for (const node of newDoc.getRoot().listNodes()){
           newDoc.getRoot().getDefaultScene().addChild(node);
         }
@@ -241,23 +337,22 @@ interface Manifest {
         // newDoc.transform(gtf.prune());
         // console.log(newDoc.getRoot().listBuffers().length);
         // newDoc.transform(gtf.unpartition());
-        console.log(newDoc.getRoot().listBuffers().length);
 
         // console.log("document root name ",newDoc.getRoot().getName())
         // newDoc.getRoot().setName("rootNode")
         // console.log("document root name ",newDoc.getRoot().getName())
 
-
-    console.log("-------------------- ","file number", index, "-------------------- \n")
-        console.log("nodelist" ,newDoc.getRoot().listNodes().length)
-        console.log("bufferlist",newDoc.getRoot().listBuffers().length)
-        console.log("accessorslist" ,newDoc.getRoot().listAccessors().length)
-        console.log("mesheslist" ,newDoc.getRoot().listMeshes().length)
-        console.log("sceneslist" ,newDoc.getRoot().listScenes().length)
-        console.log("cameraslist" ,newDoc.getRoot().listCameras().length)
-        console.log("materialsList" ,newDoc.getRoot().listMaterials().length)
-      console.log("____________________________________________________________________________________________________ \n"
-      ,"\n\n\n")
+    // Split file stat logging
+    // console.log("-------------------- ","file number", index, "-------------------- \n")
+    //     console.log("nodelist" ,newDoc.getRoot().listNodes().length)
+    //     console.log("bufferlist",newDoc.getRoot().listBuffers().length)
+    //     console.log("accessorslist" ,newDoc.getRoot().listAccessors().length)
+    //     console.log("mesheslist" ,newDoc.getRoot().listMeshes().length)
+    //     console.log("sceneslist" ,newDoc.getRoot().listScenes().length)
+    //     console.log("cameraslist" ,newDoc.getRoot().listCameras().length)
+    //     console.log("materialsList" ,newDoc.getRoot().listMaterials().length)
+    //   console.log("____________________________________________________________________________________________________ \n"
+    //   ,"\n\n\n")
      filename_list.push(writeFile(newDoc,index,io));
     })
     // accessor.
@@ -268,51 +363,48 @@ interface Manifest {
 
 
 
-
+// Sort meshes into bins that are filled by MESH attribute size 
+// this isn't accurate because it doesn't factor in material or textures.
 function sort_by_threshold(document: Document, mem_threshold: number):Array<Array<Mesh>> | null{
     let splitBin: Array<Array<Mesh>> = [];
     let bin: Array<Mesh> = [];
     document.getRoot().listMeshes().forEach((mesh) => {
     let size = 0;
-        // console.log("name",child.getName());
-        // console.log("child",child.getMesh().listPrimitives())
+
           try{
             mesh.listPrimitives().forEach((prim) => {
-              // console.log(" semantics",prim.listSemantics())
-              // console.log(" Count", prim.getAttribute("POSITION").getCount());
 
               prim.listSemantics().forEach((semantics) => {
                 const accessor = prim.getAttribute(semantics);
                 size = size + accessor.getByteLength();
-                const array = accessor.getArray() as Float32Array | Int32Array | Uint32Array | null;
-
-                // console.log("  i bytelength", accessor.getByteLength());
-
+                // const array = accessor.getArray() as Float32Array | Int32Array | Uint32Array | null;
               })
 
             })
+            //if the byte size of the bin and the new mesh is less threshold, the bin should have the mesh added
+            //if the mesh exceeds the total mem_threshold size, it should be placed in its own bin.
+            //if the byte size of the bin and the new mesh is greated than the threshold, the old bin should be added to the 
+            //bin array and the new mesh should be pushed to an empty bin.
             if( bin.reduce((total,node)=> total + size,0) + size < mem_threshold){
-              // console.log("I should trigger the most", size);
               bin.push(mesh);
             }else if (size > mem_threshold){
-              // console.log("I should almost never trigger");
 
               splitBin.push([mesh]);
             }else{
-              // console.log("I shuold trigger infrequently");
               splitBin.push(bin);
               bin = [];
               size = 0;
               bin.push(mesh);
             }
           }catch(e){
-            console.error(e);
+            throw new Error(e);
           }
         })
         splitBin.push(bin);
   return splitBin;
 }
 
+//UNUSED
 function setState(document: Document, subArray: Array<Float32Array | Int32Array | Uint32Array | null>){
   for (const mesh of document.getRoot().listMeshes()){
     // console.log(mesh.getName())
@@ -325,6 +417,10 @@ function setState(document: Document, subArray: Array<Float32Array | Int32Array 
     }
   }
 }
+
+
+
+//BELOW ARE SOME IDEAS FOR SPLITTING GLB FILES BASED ON POSITION AND AXES
 
 // function binDimSplit(bbox,axis, document, scene){
 //   const mid = (bbox.max[axis] - bbox.min[axis]) / 2 + bbox.min[axis];
