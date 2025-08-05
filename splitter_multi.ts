@@ -6,6 +6,7 @@ import * as fs from 'fs/promises';
 import { error } from 'console';
 import { write, existsSync, mkdirSync, read } from 'fs';
 import { Command } from 'commander';
+import * as path from 'path';
 
 const CLI = new Command();
 
@@ -48,7 +49,10 @@ const IN_GLTF = config.inputPathGLTF;
 const IN_BIN = config.inputPathBIN;
 const IN_GLB = config.inputPathGLB;
 const OUTPATH = config.outputPath;
-const OUT = config.outputPath + FILENAME;
+// Use proper path joining for output file path
+const OUT = path.isAbsolute(config.outputPath)
+  ? path.join(config.outputPath, FILENAME)
+  : path.join(process.cwd(), config.outputPath, FILENAME);
 
 
 
@@ -127,10 +131,14 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
 
 (async () => {
 
-  var dir = __dirname +"/"+ config.outputPath;
-  // console.log("directory",dir);
+  // Use proper path resolution to handle both absolute and relative paths
+  var dir = path.isAbsolute(config.outputPath)
+    ? config.outputPath
+    : path.resolve(process.cwd(), config.outputPath);
+
+  console.log("Output directory:", dir);
   if (!existsSync(dir)) {
-      mkdirSync(dir,{ recursive : true});
+      mkdirSync(dir, { recursive: true });
   }
   // try {
     await MeshoptDecoder.ready;
