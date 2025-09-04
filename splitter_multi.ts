@@ -197,6 +197,7 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
     // Use to check if there are detatched elements
     // await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH]})) ;
     await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH,PropertyType.NODE]})) ;
+    // await document.transform(gtf.dedup({propertyTypes: [PropertyType.MESH]})) ;
       // console.log("\n\n after prune\n\n__________________________________________________________________________________________________ \n")
       // console.log("nodelist" ,document.getroot().listnodes().length)
       // console.log("accessorslist" ,document.getroot().listaccessors().length)
@@ -341,15 +342,6 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
         for (const node of newDoc.getRoot().listNodes()){
           newDoc.getRoot().getDefaultScene().addChild(node);
         }
-        // gtf.copyToDocument(newDoc,document,document.getRoot().listAccessors(),copyResolver)
-        // newDoc.transform(gtf.prune());
-        // console.log(newDoc.getRoot().listBuffers().length);
-        // newDoc.transform(gtf.unpartition());
-
-        // console.log("document root name ",newDoc.getRoot().getName())
-        // newDoc.getRoot().setName("rootNode")
-        // console.log("document root name ",newDoc.getRoot().getName())
-
     // Split file stat logging
     // console.log("-------------------- ","file number", index, "-------------------- \n")
     //     console.log("nodelist" ,newDoc.getRoot().listNodes().length)
@@ -371,45 +363,109 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
 
 
 
-// Sort meshes into bins that are filled by MESH attribute size 
+// Sort meshes into bins that are filled by MESH attribute size
 // this isn't accurate because it doesn't factor in material or textures.
 function sort_by_threshold(document: Document, mem_threshold: number):Array<Array<Mesh>> | null{
     let splitBin: Array<Array<Mesh>> = [];
     let bin: Array<Mesh> = [];
+    const meshesWithSize: Array<{mesh: Mesh, size: number}> = [];
+    let totalSize = 0;
     document.getRoot().listMeshes().forEach((mesh) => {
-    let size = 0;
+    let meshSize = 0;
 
           try{
             mesh.listPrimitives().forEach((prim) => {
 
               prim.listSemantics().forEach((semantics) => {
                 const accessor = prim.getAttribute(semantics);
-                size = size + accessor.getByteLength();
-                // const array = accessor.getArray() as Float32Array | Int32Array | Uint32Array | null;
-              })
+                meshSize += accessor.getByteLength();
+              });
 
-            })
+            });
+
+            // Add mesh to the meshWithSize Array
+            meshesWithSize.push({ mesh,size: meshSize});
+            totalSize += meshSize;
             //if the byte size of the bin and the new mesh is less threshold, the bin should have the mesh added
             //if the mesh exceeds the total mem_threshold size, it should be placed in its own bin.
-            //if the byte size of the bin and the new mesh is greated than the threshold, the old bin should be added to the 
+            //if the byte size of the bin and the new mesh is greated than the threshold, the old bin should be added to the
             //bin array and the new mesh should be pushed to an empty bin.
-            if( bin.reduce((total,node)=> total + size,0) + size < mem_threshold){
-              bin.push(mesh);
-            }else if (size > mem_threshold){
+            // if( bin.reduce((total,node)=> total + size,0) + size < mem_threshold){
+            //   bin.push(mesh);
+            // }else if (size > mem_threshold){
 
-              splitBin.push([mesh]);
-            }else{
-              splitBin.push(bin);
-              bin = [];
-              size = 0;
-              bin.push(mesh);
-            }
+            //   splitBin.push([mesh]);
+            // }else{
+              // splitBin.push(bin);
+              // bin = [];
+              // size = 0;
+              // bin.push(mesh);
+            // }
           }catch(e){
             throw new Error(e);
           }
-        })
-        splitBin.push(bin);
-  return splitBin;
+    });
+          // Calculate the optimal number of bins based on the threshold
+          const optimalBinCount = Math.max(1,Math.ceil(totalSize / mem_threshold))
+          const targetSizePerBin = totalSize / optimalBinCount;
+
+          console.log(`Total Size: ${totalSize} bytes`)
+          console.log(`Creating ${optimalBinCount} bins with target size: ${targetSizePerBin}`)
+
+          // Order meshes by size
+          meshesWithSize.sort((a,b)=> b.size - a.size);
+
+          // Create empty bins
+          const bins: Array<Array<Mesh>> = Array.from({length: optimalBinCount}, (): Array<Mesh> => []);
+          const binSizes: Array<number> = Array(optimalBinCount).fill(0);
+
+          // Use a greedy algorithm to disribute meshes across bins
+          const oversizedMeshes = meshesWithSize.filter(item => item.size > targetSizePerBin);
+          const normalMeshes = meshesWithSize.filter(item => item.size <= targetSizePerBin);
+
+          // Place each oversized mesh in its own bin
+          oversizedMeshes.forEach(({mesh, size}) => {
+              // Select from only the set of empty bins
+              const binIndex = binSizes.indexOf(Math.min(...binSizes));
+              bins[binIndex].push(mesh);
+              binSizes[binIndex] += size;
+          });
+
+          normalMeshes.forEach(({mesh,size})=>{
+
+// Find the bin that has the most space available but can still fit this mesh
+        const binIndex = binSizes
+            .map((binSize, index) => ({ index, remainingSpace: mem_threshold - binSize }))
+            .filter(bin => bin.remainingSpace >= size)
+            .sort((a, b) => a.remainingSpace - b.remainingSpace)[0]?.index;
+  // If we found a suitable bin, add the mesh to it
+        if (binIndex !== undefined) {
+            bins[binIndex].push(mesh);
+            binSizes[binIndex] += size;
+        } else {
+            // If no bin can fit this mesh, find the emptiest bin
+            const emptyBinIndex = binSizes.indexOf(Math.min(...binSizes));
+            bins[emptyBinIndex].push(mesh);
+            binSizes[emptyBinIndex] += size;
+        }
+    });
+    //Remove empty bins
+    const finalBins = bins.filter(bin => bin.length > 0);
+
+    //Log final distribution
+    finalBins.forEach((bin,index) => {
+            const binSize = bin.reduce((total, mesh) => {
+            let meshSize = 0;
+            mesh.listPrimitives().forEach(prim => {
+                prim.listSemantics().forEach(semantics => {
+                    meshSize += prim.getAttribute(semantics).getByteLength();
+                });
+            });
+            return total + meshSize;
+        }, 0);
+        console.log(`Bin ${index}: ${bin.length} meshes, total size: ${binSize} bytes (${(binSize/totalSize*100).toFixed(2)}% of total)`);
+    });
+    return finalBins;
 }
 
 //UNUSED
@@ -425,155 +481,3 @@ function setState(document: Document, subArray: Array<Float32Array | Int32Array 
     }
   }
 }
-
-
-
-//BELOW ARE SOME IDEAS FOR SPLITTING GLB FILES BASED ON POSITION AND AXES
-
-// function binDimSplit(bbox,axis, document, scene){
-//   const mid = (bbox.max[axis] - bbox.min[axis]) / 2 + bbox.min[axis];
-//   let size_sum = 0;
-//   const prim_array = [];
-//     scene.listChildren().forEach((rootNode)=> {
-//       let count = {left: 0 , right:0};
-//       rootNode.listChildren().forEach((child) =>{
-//           console.log("name",child.getName());
-//         try{
-
-//       let max;
-//       let min;
-//       child.getMesh().listPrimitives().forEach((prim) =>{
-//         // const splitPrim = map.get(prim);
-
-
-//           console.log("  semantics", prim.listSemantics());
-//         if (prim.getAttribute("POSITION") != null){
-//           console.log("  Count", prim.getAttribute("POSITION").getCount());
-//           // weight assessment here
-//           prim.listAttributes().forEach((accessor)=>{
-//             console.log("  i bytelength", accessor.getByteLength());
-//             size_sum = size_sum + accessor.getByteLength();
-//           });
-
-//           for (let i = 0; i < prim.getAttribute("POSITION").getCount() ; i++){
-//             const element = prim.getAttribute("POSITION").getElement(i,[]);
-//             if(i ==0){
-//               max = element[axis];
-//               min = element[axis];
-//             }else{
-//               if (max < element[axis]) max = element[axis];
-//               if (min > element[axis]) min = element[axis];
-//             }
-//               }
-//             }
-//         console.log("   max",max, " min",min);
-//           });
-//         if (min > mid && max > mid ){
-//           console.log("trigger")
-//           count.right = count.right + 1;
-//         }else{
-//           console.log("trigger")
-//           count.left = count.left + 1;
-//         }
-//         }catch(e){
-//           console.error(e);
-//         }
-//         console.log("   count",count.left + count.right);
-//         });
-//       });
-//   console.log("       size_sum",size_sum)
-// }
-
-    // document.getRoot()
-    //   .listScenes()
-    //   .forEach((scene) => {
-    //     const bounds = gtf.bounds(scene);
-    //     console.log('scene', bounds);
-    //     console.log("sorted length",sorted.length);
-
-        // scene.listChildren()
-          // .forEach((child) => {
-          //   try{
-          //   child.listChildren().forEach((childer) => {
-          //   // console.log(child.getName());
-          //   childer.getMesh().listPrimitives().forEach((prim) => {
-          //       for (const semantic of prim.listSemantics()){
-          //         const attribute = prim.getAttribute(semantic);
-          //         tmpAccessor.copy(attribute);
-          //         split_Primitive.lhs[semantic] = Array(leftCount * attribute.getElementSize());
-          //         split_Primitive.rhs[semantic] = Array(rightCount * attribute.getElementSize());
-          //         console.log(semantic);
-          //       // console.log(prim.getAttribute('POSITION').getCount());
-
-          //     });
-          //   });
-          //   }
-          //   catch(e){
-          //     console.log(e.message);
-          //   }
-          // });
-        //
-                // newDoc.transform(gtf.unpartition())
-                // console.log("Original Doc")
-
-              // }
-              // }
-
-
-            // }
-              //
-
-              // console.log(emptyDoc.getRoot().listNodes());
-                // newFile.forEach((subMesh) =>{
-                //   newNode.setMesh(subMesh.clone());
-              // console.log(subMesh)
-              // })
-              // console.log("new node", newNode)
-
-                // console.log("newdoc meshes length initial",
-                            // newDoc.getRoot().listMeshes().length)
-                // document.getRoot().listMeshes().forEach((targetMesh) => {
-                  // const sourceMesh = sourceMeshMap.get(targetMesh.getName());
-
-                // let node_checker = (arr : Array<Node>, target : Array<Node>) => target.every(v => arr.includes(v));
-                // if (sourceMesh && meshNamesToKeep.includes(targetMesh.getName())){
-                  // assume that targetParentNodes is always length 1
-                  // const targetParentNodes = targetMesh.listParents().filter((p)=> p instanceof Node)
-                  // console.log("--------------------------------------------------"
-                  // ,targetParentNodes.length);
-                  // if (node_checker(targetParentNodes,scene.listChildren()) && targetParentNodes.length == 1){
-                    // const newNode = newDoc.createNode(targetParentNodes[0].getName());
-                    // // scene.addChild(newNode)
-                    // const newMesh = newDoc.createMesh(targetMesh.getName());
-                    // // newNode.setMesh(targetMesh);
-                    // const primatives = targetMesh.listPrimitives()
-                    // targetMesh.listPrimitives().forEach((prim)=>{
-                      // for ( const semantic of prim.listSemantics()){
-                          // tmpAccessor.copy(prim.getAttribute(semantic))
-                      // }
-                    //   const newPrim = newDoc.createPrimitive()
-                    //   .setAttribute("POSITION",prim.getAttribute('POSITION'))
-                    //   .setAttribute("TEXTCOORD_0",prim.getAttribute("TEXTCOORD_0"));
-                    //   newMesh.addPrimitive(prim);
-
-                  // });
-                  // newNode.setMesh(newMesh);
-                  // const newMesh = newDoc.createMesh(targetMesh.getName());
-                  // newMesh.copy(targetMesh)
-                // }else{
-                  // console.log("included",targetMesh.getName())
-                // }
-                // newFile.forEach((mesh) =>{
-                //   // console.log("oldmesh",mesh)
-                //   newDoc.getRoot().listMeshes().forEach((newMesh)=>{
-                //     if(newMesh != mesh){
-                //       newMesh.dispose()
-                //     }else{
-                //       // console.log("mesh ",mesh.getName())
-                //     }
-                //   })
-                // })
-                // console.log(mesh.getName())
-                // }
-              // })
-                //
