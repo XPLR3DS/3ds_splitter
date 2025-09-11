@@ -4,7 +4,7 @@ import { Document, Node, NodeIO, Primitive ,Mesh, PropertyType ,vec3} from '@glt
 import * as gtf from '@gltf-transform/functions';
 import * as fs from 'fs/promises';
 import { error } from 'console';
-import { write, existsSync, mkdirSync, read, createReadStream } from 'fs';
+import { write, existsSync, mkdirSync, read , createReadStream} from 'fs';
 import { Command } from 'commander';
 import * as path from 'path';
 
@@ -49,7 +49,7 @@ const config: Config = {
 const mem_threshold = Number(config.threshold);
 
 if(mem_threshold == null){
-  throw new Error("Memory threshold broken")
+  throw new Error("Memory threshold not entered")
 }
 
 // File size constants
@@ -165,6 +165,7 @@ async function readLargeGLTFFile(filePath: string): Promise<string> {
 async function readDoc(io: NodeIO): Promise<Document> {
   console.log('readDoc called');
   if(IN_GLB !== undefined){
+    const chunks : Array<Uint8Array> = [];
     try{
       // Check file size before reading
       const fileSize = await checkFileSize(IN_GLB);
@@ -179,7 +180,22 @@ async function readDoc(io: NodeIO): Promise<Document> {
         return await io.read(IN_GLB);
       }
     }catch(e){
-      throw new Error(e + " \n failed to load glb")
+      if(e.code === "ERR_FS_FILE_TOO_LARGE"){
+        try {
+          const readStream = createReadStream(IN_GLB);
+          // This shows how ot use the node IO for the binary typeshttps://gltf-transform.dev/modules/core/classes/NodeIO
+          readStream.on("data", function (chunk: Uint8Array) {
+            chunks.push(Buffer.from(chunk,Uint8Array))
+          })
+          readStream.on("end", function (){
+              const fileInMemory:Uint8Array= new Uint8Array; 
+              chunks.forEach(chunk => fileInMemory.push(chunk));
+             return io.readBinary(fileInMemory);
+           })
+        } catch(e) {
+          throw new Error(e.code + " \n failed to load glb")
+        }
+      }
     }
   }else if(IN_GLTF !== undefined){
     try{
@@ -265,6 +281,7 @@ async function readDoc(io: NodeIO): Promise<Document> {
 //   }
 //   throw new Error("something unexpected happened in readDoc")
 // }
+
 
 (async () => {
 
