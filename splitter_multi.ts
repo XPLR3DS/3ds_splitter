@@ -4,7 +4,7 @@ import { Document, Node, NodeIO, Primitive ,Mesh, PropertyType ,vec3} from '@glt
 import * as gtf from '@gltf-transform/functions';
 import * as fs from 'fs/promises';
 import { error } from 'console';
-import { write, existsSync, mkdirSync, read } from 'fs';
+import { write, existsSync, mkdirSync, read, createReadStream } from 'fs';
 import { Command } from 'commander';
 import * as path from 'path';
 
@@ -27,22 +27,34 @@ command.option('-i, --inputglb <path>', 'input GLB file path')
     .option('-o, --output <path>', 'output directory path " defaults to ./ "',"./")
     .requiredOption('-n, --name <name>', 'base filename ')
     .option('-m, --threshold <number>','target memory_threshold for each file " defaults to 40000000','40000000')
+    .option('-l, --limit <number>', 'file size limit in GB for streaming mode " defaults to 2','2')
     .parse(process.argv);
 
+const options = command.opts();
+if (!options.inputglb && !options.inputgltf) {
+    console.error('Error: You must provide either --inputglb or --inputgltf');
+    process.exit(1);
+}
+
+const inputFile = options.inputglb || options.inputgltf;
 
 const config: Config = {
-      fileName: command.opts().name,
-      inputPathGLB: command.opts().inputglb,
-      outputPath: command.opts().output,
-      threshold: command.opts().threshold,
-      inputPathGLTF: command.opts().inputgltf,
-      inputPathBIN: command.opts().inputbin
+      fileName: options.name,
+      inputPathGLB: options.inputglb,
+      outputPath: options.output,
+      threshold: options.threshold,
+      inputPathGLTF: options.inputgltf,
+      inputPathBIN: options.inputbin
 }
 const mem_threshold = Number(config.threshold);
 
 if(mem_threshold == null){
   throw new Error("Memory threshold broken")
 }
+
+// File size constants
+const FILE_SIZE_LIMIT = (Number(command.opts().limit) || 2) * 1024 * 1024 * 1024; // Configurable limit in bytes
+const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks for streaming
 
 const FILENAME =  config.fileName;
 const IN_GLTF = config.inputPathGLTF;
@@ -89,29 +101,154 @@ interface Manifest {
   errors: Array<string>,
 }
 
-async function readDoc(io: NodeIO):  Promise<Document>  {
+// Helper function to check file size
+async function checkFileSize(filePath: string): Promise<number> {
+  try {
+    const stats = await fs.stat(filePath);
+    return stats.size;
+  } catch (error) {
+    throw new Error(`Failed to get file size for ${filePath}: ${error}`);
+  }
+}
+
+// Helper function to read large files using streaming
+async function readLargeFile(filePath: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const stream = createReadStream(filePath, { highWaterMark: CHUNK_SIZE });
+    
+    let totalBytes = 0;
+    let lastProgressTime = Date.now();
+    const fileSize = require('fs').statSync(filePath).size;
+    
+    console.log(`Reading large file: ${filePath} (${(fileSize / (1024 * 1024 * 1024)).toFixed(2)} GB)`);
+    console.log(`Using chunk size: ${(CHUNK_SIZE / (1024 * 1024)).toFixed(0)} MB`);
+    
+    stream.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      totalBytes += chunk.length;
+      
+      // Log progress every 5 seconds or every 100MB, whichever comes first
+      const now = Date.now();
+      const shouldLog = (now - lastProgressTime > 5000) || (totalBytes % (100 * 1024 * 1024) === 0);
+      
+      if (shouldLog) {
+        const progress = ((totalBytes / fileSize) * 100).toFixed(1);
+        const speed = (totalBytes / (1024 * 1024)) / ((now - lastProgressTime) / 1000); // MB/s
+        console.log(`Reading progress: ${progress}% (${(totalBytes / (1024 * 1024 * 1024)).toFixed(2)} GB / ${(fileSize / (1024 * 1024 * 1024)).toFixed(2)} GB) - ${speed.toFixed(1)} MB/s`);
+        lastProgressTime = now;
+      }
+    });
+    
+    stream.on('end', () => {
+      console.log(`Finished reading file: ${(totalBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+      resolve(Buffer.concat(chunks));
+    });
+    
+    stream.on('error', (error) => {
+      reject(new Error(`Failed to read large file ${filePath}: ${error}`));
+    });
+  });
+}
+
+// Helper function to read large binary file for GLTF+BIN combination
+async function readLargeBinaryFile(filePath: string): Promise<Buffer> {
+  return readLargeFile(filePath);
+}
+
+// Helper function to read large GLTF file
+async function readLargeGLTFFile(filePath: string): Promise<string> {
+  const buffer = await readLargeFile(filePath);
+  return buffer.toString('utf8');
+}
+
+async function readDoc(io: NodeIO): Promise<Document> {
+  console.log('readDoc called');
   if(IN_GLB !== undefined){
     try{
-      return await io.read(IN_GLB);
+      // Check file size before reading
+      const fileSize = await checkFileSize(IN_GLB);
+      console.log(`GLB file size: ${(fileSize / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+      
+      if (fileSize > FILE_SIZE_LIMIT) {
+        console.log(`Large file detected (>2GB), using streaming approach...`);
+        const buffer = await readLargeFile(IN_GLB);
+        return await io.readBinary(buffer);
+      } else {
+        console.log(`Small file detected (≤2GB), using direct reading...`);
+        return await io.read(IN_GLB);
+      }
     }catch(e){
       throw new Error(e + " \n failed to load glb")
     }
-  }else if(IN_GLTF !== undefined && IN_BIN !== undefined ){
+  }else if(IN_GLTF !== undefined){
     try{
-      return await io.read(IN_GLTF)
-      // console.log(IN_GLTF);
-      // const gltf = await io.readAsJSON(IN_GLTF);
-      // const binfile = await fs.readFile(IN_BIN)
-      // const bin = await io.readBinary(binfile);
-      // const doc = io.readJSON(gltf);
-      // console.log("document", doc, "\n", "bin", bin);
-      // gtf.copyToDocument(doc,bin,bin.getRoot())
-
+      // Check file sizes for GLTF and BIN files
+      const gltfSize = await checkFileSize(IN_GLTF);
+      const binSize = IN_BIN ? await checkFileSize(IN_BIN) : 0;
+      const totalSize = gltfSize + binSize;
+      
+      console.log(`GLTF file size: ${(gltfSize / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+      if (IN_BIN) {
+        console.log(`BIN file size: ${(binSize / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+      } else {
+        console.log(`No BIN file provided`);
+      }
+      console.log(`Total size: ${(totalSize / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+      
+      if (totalSize > FILE_SIZE_LIMIT) {
+        console.log(`Large files detected (>2GB total), using streaming approach...`);
+        
+        // Check if GLTF file is large
+        const isGLTFLarge = gltfSize > FILE_SIZE_LIMIT;
+        const isBINLarge = IN_BIN && binSize > FILE_SIZE_LIMIT;
+        
+        let tempGLTFPath: string | null = null;
+        let tempBinPath: string | null = null;
+        
+        try {
+          // Handle large GLTF file
+          if (isGLTFLarge) {
+            console.log(`Reading large GLTF file using streaming...`);
+            const gltfContent = await readLargeGLTFFile(IN_GLTF);
+            tempGLTFPath = IN_GLTF + '.temp';
+            await fs.writeFile(tempGLTFPath, gltfContent, 'utf8');
+          }
+          
+          // Handle large BIN file (only if BIN file exists)
+          if (isBINLarge && IN_BIN) {
+            console.log(`Reading large BIN file using streaming...`);
+            const binBuffer = await readLargeBinaryFile(IN_BIN);
+            tempBinPath = IN_BIN + '.temp';
+            await fs.writeFile(tempBinPath, binBuffer);
+          }
+          
+          // Use the appropriate file paths (temp files if large, original if small)
+          const gltfPath = tempGLTFPath || IN_GLTF;
+          
+          // Read the document using the appropriate paths
+          const result = await io.read(gltfPath);
+          
+          // Clean up temp files
+          if (tempGLTFPath) await fs.unlink(tempGLTFPath);
+          if (tempBinPath) await fs.unlink(tempBinPath);
+          
+          return result;
+        } catch (error) {
+          // Clean up temp files on error
+          if (tempGLTFPath) await fs.unlink(tempGLTFPath).catch(() => {});
+          if (tempBinPath) await fs.unlink(tempBinPath).catch(() => {});
+          throw error;
+        }
+      } else {
+        console.log(`Small files detected (≤2GB total), using direct reading...`);
+        return await io.read(IN_GLTF);
+      }
     }catch(e){
       throw new Error(e + " \n failed to load gltf")
     }
   }
-  throw new Error()
+  throw new Error("No valid input files provided")
 }
 
 // async function readDoc(io: NodeIO):Document{
@@ -137,6 +274,7 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
     : path.resolve(process.cwd(), config.outputPath);
 
   console.log("Output directory:", dir);
+  console.log(`File size limit for streaming mode: ${(FILE_SIZE_LIMIT / (1024 * 1024 * 1024)).toFixed(1)} GB`);
   if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
   }
