@@ -7,6 +7,7 @@ import { error } from 'console';
 import { write, existsSync, mkdirSync, read , createReadStream} from 'fs';
 import { Command } from 'commander';
 import * as path from 'path';
+import { rejects } from 'assert';
 
 const CLI = new Command();
 
@@ -181,20 +182,27 @@ async function readDoc(io: NodeIO): Promise<Document> {
       }
     }catch(e){
       if(e.code === "ERR_FS_FILE_TOO_LARGE"){
-        try {
-          const readStream = createReadStream(IN_GLB);
-          // This shows how ot use the node IO for the binary typeshttps://gltf-transform.dev/modules/core/classes/NodeIO
-          readStream.on("data", function (chunk: Uint8Array) {
-            chunks.push(Buffer.from(chunk,Uint8Array))
+          return new Promise(async function(resolve ,reject) {
+
+          const fd = await fs.open(IN_GLB)
+          const readStream = fd.createReadStream();
+          // This shows how to use the node IO for the binary typeshttps://gltf-transform.dev/modules/core/classes/NodeIO
+          readStream.on("data", function (chunk) {
+            console.log("chunk pushed to buffer")
+            chunks.push(Buffer.from(chunk))
           })
+
           readStream.on("end", function (){
-              const fileInMemory:Uint8Array= new Uint8Array; 
-              chunks.forEach(chunk => fileInMemory.push(chunk));
-             return io.readBinary(fileInMemory);
+            console.log("buffer loaded")
+            const buf = Buffer.concat(chunks)
+            resolve(io.readBinary(buf));
            })
-        } catch(e) {
-          throw new Error(e.code + " \n failed to load glb")
-        }
+           readStream.on("error",(err)=>{
+            reject(new Error(`failed to read file ${IN_GLB}`))
+           })
+          })
+      }else{
+        throw(e + "unknown error has occured")
       }
     }
   }else if(IN_GLTF !== undefined){
@@ -284,7 +292,7 @@ async function readDoc(io: NodeIO): Promise<Document> {
 
 
 (async () => {
-
+  // try{
   // Use proper path resolution to handle both absolute and relative paths
   var dir = path.isAbsolute(config.outputPath)
     ? config.outputPath
@@ -305,9 +313,7 @@ async function readDoc(io: NodeIO): Promise<Document> {
         'meshopt.decoder': MeshoptDecoder,
         'meshopt.encoder': MeshoptEncoder,
       });
-
     const document = await readDoc(io)
-
       // File stats
       // const symSegs = Math.ceil(fs.stat(IN).size / 80);
       // const stats = await fs.stat(IN);
