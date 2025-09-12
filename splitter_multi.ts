@@ -18,12 +18,13 @@ import {
 
 import * as gtf from '@gltf-transform/functions';
 import * as fs from 'fs/promises';
-import { error } from 'console';
+import { error, warn } from 'console';
 import { write, existsSync, mkdirSync, read , createReadStream} from 'fs';
 import { Command } from 'commander';
 import * as path from 'path';
 import { rejects } from 'assert';
 import { resourceLimits } from 'worker_threads';
+import { decode } from 'querystring';
 
 const CLI = new Command();
 
@@ -261,6 +262,29 @@ function isGLB(view: Uint8Array): boolean {
 
 		return jsonDoc;
 		}
+    //deocode text
+   function decodeText(array: Uint8Array): Array<string>{
+    const decoder = new TextDecoder();
+    const stringArray: Array<string> = [];
+    for (let i = 0; i < Math.floor(array.length/536870888) ;i++ ){
+      stringArray.push(decoder.decode(array.slice(i*536870888,i*array.length/536870888)))
+    }
+    console.log("first index location:",array.length/2,"last index location:" , array.length-1)
+    return stringArray
+   }
+
+   //decode json
+ function decodeJSON(array: Uint8Array): any{
+    const decoder = new TextDecoder();
+    const stringArray: Array<string> = [];
+    for (let i = 0; i < Math.floor(array.length/536870888) ;i++ ){
+      stringArray.push(decoder.decode(array.slice(i*536870888,i*array.length/536870888)))
+    }
+    const json = JSON.parse(stringArray.reduce((a,i)=> a+i)) as GLTF.IGLTF
+    console.log("first index location:",array.length/2,"last index location:" , array.length-1)
+    return json 
+   }
+
           // below is an implementation of a segment of io.readBinary
   function bin_toJson(glb: Uint8Array): JSONDocument{
         try{
@@ -269,13 +293,15 @@ function isGLB(view: Uint8Array): boolean {
           const jsonChunkHeader = new Uint32Array(glb.buffer, glb.byteOffset + 12, 2);
           const jsonByteOffset = 20;
           const jsonByteLength = jsonChunkHeader[0];
-          let jsonText
-          try{
-          jsonText = BufferUtils.decodeText(BufferUtils.toView(glb, jsonByteOffset, jsonByteLength));
-          }catch(e){
-              throw new Error("\n" + e + "BufferUtils.decodeText Is broken \n")
-            }
-          const json = JSON.parse(jsonText) as GLTF.IGLTF;
+          // let jsonText
+          // try{
+
+          // jsonText =  decodeJSON(BufferUtils.toView(glb, jsonByteOffset, jsonByteLength));
+          // }catch(e){
+          //     throw new Error("\n" + e + "\n BufferUtils.decodeText Is broken \n")
+          //   }
+          // const json = JSON.parse(jsonText) as GLTF.IGLTF;
+          const json = decodeJSON(BufferUtils.toView(glb, jsonByteOffset, jsonByteLength));
           //decode bin chunk
 
           const binByteOffset = jsonByteOffset + jsonByteLength;
