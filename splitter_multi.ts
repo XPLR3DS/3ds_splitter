@@ -187,9 +187,6 @@ async function readLargeBinaryFile(filePath: string): Promise<Uint8Array> {
               console.log("buffer loaded")
               console.log()
               const buf = BufferUtils.concat(chunks)
-              resolve(buf);
-            })
-            readStream.on("error",(err)=>{
               reject(new Error(`failed to read file ${filePath}`))
               })
           }catch(e){
@@ -262,27 +259,34 @@ function isGLB(view: Uint8Array): boolean {
 
 		return jsonDoc;
 		}
-    //deocode text
-   function decodeText(array: Uint8Array): Array<string>{
-    const decoder = new TextDecoder();
-    const stringArray: Array<string> = [];
-    for (let i = 0; i < Math.floor(array.length/536870888) ;i++ ){
-      stringArray.push(decoder.decode(array.slice(i*536870888,i*array.length/536870888)))
-    }
-    console.log("first index location:",array.length/2,"last index location:" , array.length-1)
-    return stringArray
-   }
+    ////deocode text
+   //function decodeText(array: Uint8Array): Array<string>{
+    //const decoder = new TextDecoder();
+
+    //console.log("first index location:",array.length/2,"last index location:" , array.length-1)
+    //return stringArray
+   //}
 
    //decode json
  function decodeJSON(array: Uint8Array): any{
+   try{
     const decoder = new TextDecoder();
     const stringArray: Array<string> = [];
-    for (let i = 0; i < Math.floor(array.length/536870888) ;i++ ){
-      stringArray.push(decoder.decode(array.slice(i*536870888,i*array.length/536870888)))
+
+    // batch process strings to bypass maximum string size
+    for (let i = 0; i < Math.ceil(array.length/536870887) ;i++ ){
+      if(i+1 == Math.ceil(array.length/536870887)){
+        stringArray.push( decoder.decode( array.slice(i*536870887,array.length)))
+      }else{
+        stringArray.push(decoder.decode(array.slice(i*536870887,((i+1)*536870887)+1)))
+      }
     }
     const json = JSON.parse(stringArray.reduce((a,i)=> a+i)) as GLTF.IGLTF
     console.log("first index location:",array.length/2,"last index location:" , array.length-1)
-    return json 
+    return json
+   }catch(e){
+     throw new Error(e);
+    }
    }
 
           // below is an implementation of a segment of io.readBinary
