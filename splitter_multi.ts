@@ -185,8 +185,8 @@ async function readLargeBinaryFile(filePath: string): Promise<Uint8Array> {
 
             readStream.on("end", function (){
               console.log("buffer loaded")
-              console.log()
               const buf = BufferUtils.concat(chunks)
+              resolve(buf)
               reject(new Error(`failed to read file ${filePath}`))
               })
           }catch(e){
@@ -337,9 +337,9 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
             // console.log(isGLB(glb))
             // try{
             // readResourcesInternal(jsonDoc);
-            const jsonDoc = bin_toJson(glb)
-            resolve(await io.readJSON(jsonDoc));
-            // return io.readBinary(glb);
+            // const jsonDoc = bin_toJson(glb)
+            // resolve(await io.readJSON(jsonDoc));
+            return io.readBinary(glb);
             }catch(e){
               reject(e)
             }
@@ -492,27 +492,45 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
           }
       }
     }
+      document.getRoot().listNodes().forEach((node)=>{
+        console.log(node.getName())
+      })
+
       // console.log("nullmesh\n",nullmesh,"\n")
 
-      // console.log("Original Doc")
-      // console.log("____________________________________________________________________________________________________ \n")
-      // console.log("nodelist" ,document.getRoot().listNodes().length)
-      // console.log("accessorslist" ,document.getRoot().listAccessors().length)
-      // console.log("mesheslist" ,document.getRoot().listMeshes().length)
-      // console.log("sceneslist" ,document.getRoot().listScenes().length)
-      // console.log("cameraslist" ,document.getRoot().listCameras().length)
-      // console.log("materialsList" ,document.getRoot().listMaterials().length)
+      console.log("Original Doc")
+      console.log("____________________________________________________________________________________________________ \n")
+      console.log("nodelist" ,document.getRoot().listNodes().length)
+      console.log("accessorslist" ,document.getRoot().listAccessors().length)
+      console.log("mesheslist" ,document.getRoot().listMeshes().length)
+      console.log("sceneslist" ,document.getRoot().listScenes().length)
+      console.log("cameraslist" ,document.getRoot().listCameras().length)
+      console.log("materialsList" ,document.getRoot().listMaterials().length)
+      console.log("bufferList" ,document.getRoot().listBuffers().length)
+//       document.getRoot().listAccessors().forEach((accessor)=>{
+//         console.log(accessor)
+
+//       })
+      // console.log("nodelist" ,document.getRoot().listNodes())
+
+      // console.log("accessorslist" ,document.getRoot().listAccessors())
+      // console.log("mesheslist" ,document.getRoot().listMeshes())
+      // console.log("bufferList" ,document.getRoot().listBuffers())
+      // console.log("sceneslist" ,document.getRoot().listScenes())
+      // console.log("cameraslist" ,document.getRoot().listCameras())
+
     // Use to check if there are detatched elements
     // await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH]})) ;
     await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH,PropertyType.NODE]})) ;
     // await document.transform(gtf.dedup({propertyTypes: [PropertyType.MESH]})) ;
-      // console.log("\n\n after prune\n\n__________________________________________________________________________________________________ \n")
-      // console.log("nodelist" ,document.getroot().listnodes().length)
-      // console.log("accessorslist" ,document.getroot().listaccessors().length)
-      // console.log("mesheslist" ,document.getroot().listmeshes().length)
-      // console.log("sceneslist" ,document.getroot().listscenes().length)
-      // console.log("cameraslist" ,document.getroot().listcameras().length)
-      // console.log("materialsList" ,document.getRoot().listMaterials().length)
+      console.log("\n\n after prune\n\n__________________________________________________________________________________________________ \n")
+      console.log("nodelist" ,document.getRoot().listNodes().length)
+      console.log("accessorslist" ,document.getRoot().listAccessors().length)
+      console.log("bufferList" ,document.getRoot().listBuffers().length)
+      console.log("mesheslist" ,document.getRoot().listMeshes().length)
+      console.log("sceneslist" ,document.getRoot().listScenes().length)
+      console.log("cameraslist" ,document.getRoot().listCameras().length)
+      console.log("materialsList" ,document.getRoot().listMaterials().length)
     const sorted = sort_by_threshold(document ,mem_threshold);
 
     // console.log(sorted[0][0].getName());
@@ -668,6 +686,10 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
   }
 
 
+function split_mesh(mesh: Mesh, size: number): Array<{mesh: Mesh, size: number}>{
+  console.log("Primitives " , mesh.listPrimitives)
+  return new Array<{mesh: Mesh, size: number}>
+}
 
 
 
@@ -729,6 +751,29 @@ function sort_by_threshold(document: Document, mem_threshold: number):Array<Arra
 
           // Use a greedy algorithm to disribute meshes across bins
           const oversizedMeshes = meshesWithSize.filter(item => item.size > targetSizePerBin);
+
+          if (meshesWithSize.length < optimalBinCount){
+            console.log(`GLB has more bins than total meshes ... \n splitting oversizedMeshes`)
+            // determining the number of requred meshes, and getting the largest oversizedMeshes to split.
+            const requiredMeshes = meshesWithSize.length - optimalBinCount;
+            const meshesToSplit = oversizedMeshes.slice(0, requiredMeshes-1);
+
+            // remove old single mesh, add two smaller meshes in its place.
+            // run split rate on each required overside mesh
+            meshesToSplit.forEach(mesh=>{
+              // Remove a mesh to split from the list of meshes
+              const index = meshesWithSize.indexOf(mesh);
+              meshesWithSize.splice(index,1);
+
+              // Split meshes
+              const split_meshes = split_mesh(mesh.mesh,mesh.size);
+              meshesWithSize.concat(split_meshes);
+            })
+
+            // Reorder meshes by size
+            meshesWithSize.sort((a,b)=> b.size - a.size);
+
+          }
           const normalMeshes = meshesWithSize.filter(item => item.size <= targetSizePerBin);
 
           // Place each oversized mesh in its own bin
@@ -738,7 +783,6 @@ function sort_by_threshold(document: Document, mem_threshold: number):Array<Arra
               bins[binIndex].push(mesh);
               binSizes[binIndex] += size;
           });
-
           normalMeshes.forEach(({mesh,size})=>{
 
 // Find the bin that has the most space available but can still fit this mesh
