@@ -173,24 +173,24 @@ async function readLargeFile(filePath: string): Promise<Buffer> {
 // Helper function to read large binary file for GLTF+BIN combination
 async function readLargeBinaryFile(filePath: string): Promise<Uint8Array> {
     const chunks : Array<Uint8Array> = [];
-          return new Promise(async function(resolve ,reject) {
-          try{
-            const fd = await fs.open(filePath)
-            const readStream = fd.createReadStream();
-            // This shows how to use the node IO for the binary typeshttps://gltf-transform.dev/modules/core/classes/NodeIO
-            readStream.on("data", function (chunk) {
-              // console.log("chunk pushed to buffer")
-              chunks.push(Buffer.from(chunk))
-            })
+    return new Promise(async function(resolve ,reject) {
+    try{
+      const fd = await fs.open(filePath)
+      const readStream = fd.createReadStream();
+      // This shows how to use the node IO for the binary types
+      // https://gltf-transform.dev/modules/core/classes/NodeIO
+      readStream.on("data", function (chunk) {
+        // console.log("chunk pushed to buffer")
+        chunks.push(Buffer.from(chunk))
+      })
 
-            readStream.on("end", function (){
-              console.log("buffer loaded")
-              const buf = BufferUtils.concat(chunks)
-              resolve(buf)
-              reject(new Error(`failed to read file ${filePath}`))
-              })
-          }catch(e){
-              reject(new Error(e + " in readLargeBinaryFile"))
+      readStream.on("end", function (){
+        const buf = BufferUtils.concat(chunks)
+        resolve(buf)
+        reject(new Error(`failed to read file ${filePath}`))
+      })
+    }catch(e){
+        reject(new Error(e + " in readLargeBinaryFile"))
     }
             })
 
@@ -334,12 +334,11 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
           try{
             const buffer = await readLargeBinaryFile(IN_GLB);
             const glb = BufferUtils.toView(buffer)
-            // console.log(isGLB(glb))
-            // try{
+           // try{
             // readResourcesInternal(jsonDoc);
             // const jsonDoc = bin_toJson(glb)
             // resolve(await io.readJSON(jsonDoc));
-            return io.readBinary(glb);
+            resolve(io.readBinary(glb));
             }catch(e){
               reject(e)
             }
@@ -390,8 +389,10 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
           if (isBINLarge && IN_BIN) {
             console.log(`Reading large BIN file using streaming...`);
             const binBuffer = await readLargeBinaryFile(IN_BIN);
+            console.log('readbuffer finished')
             tempBinPath = IN_BIN + '.temp';
             await fs.writeFile(tempBinPath, binBuffer);
+            console.log('writefile Finished')
           }
 
           // Use the appropriate file paths (temp files if large, original if small)
