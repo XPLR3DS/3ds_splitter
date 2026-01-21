@@ -486,7 +486,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@loaders.gl/core@npm:^4.3.3":
+"@loaders.gl/core@npm:^4.3.4":
   version: 4.3.4
   resolution: "@loaders.gl/core@npm:4.3.4"
   dependencies:
@@ -540,7 +540,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@loaders.gl/gltf@npm:^4.3.3":
+"@loaders.gl/gltf@npm:^4.3.4":
   version: 4.3.4
   resolution: "@loaders.gl/gltf@npm:4.3.4"
   dependencies:
@@ -556,7 +556,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@loaders.gl/images@npm:4.3.4, @loaders.gl/images@npm:^4.3.3":
+"@loaders.gl/images@npm:4.3.4, @loaders.gl/images@npm:^4.3.4":
   version: 4.3.4
   resolution: "@loaders.gl/images@npm:4.3.4"
   dependencies:
@@ -567,7 +567,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@loaders.gl/json@npm:^4.3.3":
+"@loaders.gl/json@npm:^4.3.4":
   version: 4.3.4
   resolution: "@loaders.gl/json@npm:4.3.4"
   dependencies:
@@ -580,7 +580,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@loaders.gl/las@npm:^4.3.3":
+"@loaders.gl/las@npm:^4.3.4":
   version: 4.3.4
   resolution: "@loaders.gl/las@npm:4.3.4"
   dependencies:
@@ -607,7 +607,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@loaders.gl/obj@npm:^4.3.3":
+"@loaders.gl/obj@npm:^4.3.4":
   version: 4.3.4
   resolution: "@loaders.gl/obj@npm:4.3.4"
   dependencies:
@@ -619,7 +619,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@loaders.gl/ply@npm:^4.3.3":
+"@loaders.gl/ply@npm:^4.3.4":
   version: 4.3.4
   resolution: "@loaders.gl/ply@npm:4.3.4"
   dependencies:
@@ -631,7 +631,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@loaders.gl/polyfills@npm:^4.3.3":
+"@loaders.gl/polyfills@npm:^4.3.4":
   version: 4.3.4
   resolution: "@loaders.gl/polyfills@npm:4.3.4"
   dependencies:
@@ -661,7 +661,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@loaders.gl/textures@npm:4.3.4, @loaders.gl/textures@npm:^4.3.3":
+"@loaders.gl/textures@npm:4.3.4, @loaders.gl/textures@npm:^4.3.4":
   version: 4.3.4
   resolution: "@loaders.gl/textures@npm:4.3.4"
   dependencies:
@@ -845,26 +845,25 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@xeokit/xeokit-convert@npm:^1.2.0, @xeokit/xeokit-convert@npm:^1.3.0":
-  version: 1.3.0
-  resolution: "@xeokit/xeokit-convert@npm:1.3.0"
+"@xeokit/xeokit-convert@npm:^1.3.1":
+  version: 1.3.1
+  resolution: "@xeokit/xeokit-convert@npm:1.3.1"
   dependencies:
-    "@loaders.gl/core": "npm:^4.3.3"
-    "@loaders.gl/gltf": "npm:^4.3.3"
-    "@loaders.gl/images": "npm:^4.3.3"
-    "@loaders.gl/json": "npm:^4.3.3"
-    "@loaders.gl/las": "npm:^4.3.3"
-    "@loaders.gl/obj": "npm:^4.3.3"
-    "@loaders.gl/ply": "npm:^4.3.3"
-    "@loaders.gl/polyfills": "npm:^4.3.3"
-    "@loaders.gl/textures": "npm:^4.3.3"
-    "@xeokit/xeokit-convert": "npm:^1.2.0"
-    commander: "npm:^11.0.0"
+    "@loaders.gl/core": "npm:^4.3.4"
+    "@loaders.gl/gltf": "npm:^4.3.4"
+    "@loaders.gl/images": "npm:^4.3.4"
+    "@loaders.gl/json": "npm:^4.3.4"
+    "@loaders.gl/las": "npm:^4.3.4"
+    "@loaders.gl/obj": "npm:^4.3.4"
+    "@loaders.gl/ply": "npm:^4.3.4"
+    "@loaders.gl/polyfills": "npm:^4.3.4"
+    "@loaders.gl/textures": "npm:^4.3.4"
+    commander: "npm:^11.1.0"
     pako: "npm:^2.1.0"
-    web-ifc: "npm:0.0.68"
+    web-ifc: "npm:0.0.70"
   bin:
     xeokit-convert: convert2xkt.js
-  checksum: 10c0/8900b971b4029e2a8069acc6c46adc3d18f7574083e17b2beb4c5c115e99893a746e7400f95880bc994d35b78b225b3826342c3ce590fb0a16bda1c5eb4d39ba
+  checksum: 10c0/a63b39ade0f3f6bdf7420230b0c53a5599b9c0e0c9e9388769e6b2626573cace29956269bd5f3dd1378e5c586e19edfc111c570e4db9558cf0d479873c3e9762
   languageName: node
   linkType: hard
 
@@ -1116,7 +1115,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"commander@npm:^11.0.0":
+"commander@npm:^11.1.0":
   version: 11.1.0
   resolution: "commander@npm:11.1.0"
   checksum: 10c0/13cc6ac875e48780250f723fb81c1c1178d35c5decb1abb1b628b3177af08a8554e76b2c0f29de72d69eef7c864d12613272a71fabef8047922bc622ab75a179
@@ -1539,13 +1538,6 @@ __metadata:
   dependencies:
     readable-stream: "npm:~1.1.9"
   checksum: 10c0/e83ede0e104a332637efa5714858db8bac7b8156e0f723cabb1569a0e40b63b250ced498f123c5b1593f12a548dfeee77d286e765b5c658fd58982b08306c39f
-  languageName: node
-  linkType: hard
-
-"glm@npm:^1.0.0":
-  version: 1.0.0
-  resolution: "glm@npm:1.0.0"
-  checksum: 10c0/17dca69e7f0e0766a442adbf173d37d389d31e4c1e5b5d89c16a4b1eaa5b23ab9a65db45a521eba166bed1337448535fc6085350f2e07d944486b33732ec31ce
   languageName: node
   linkType: hard
 
@@ -2309,7 +2301,7 @@ __metadata:
     "@gltf-transform/functions": "npm:^4.2.1"
     "@types/core-js": "npm:^2.5.8"
     "@types/node": "npm:^24.0.13"
-    "@xeokit/xeokit-convert": "npm:^1.3.0"
+    "@xeokit/xeokit-convert": "npm:^1.3.1"
     commander: "npm:^14.0.0"
     draco3dgltf: "npm:^1.5.7"
     meshoptimizer: "npm:^0.16.1"
@@ -2783,12 +2775,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"web-ifc@npm:0.0.68":
-  version: 0.0.68
-  resolution: "web-ifc@npm:0.0.68"
-  dependencies:
-    glm: "npm:^1.0.0"
-  checksum: 10c0/8d9628f74740305bbf08bce0657e042c56bdceb77da05fc338a892cad16b81ce059451b89a790f85523c65dd8c03406c7da92daebc920c297abaca81b1fbaba4
+"web-ifc@npm:0.0.70":
+  version: 0.0.70
+  resolution: "web-ifc@npm:0.0.70"
+  checksum: 10c0/d7b4421dd6cd51f90eed69c63efeb5218516fce110cbdc9b4d015c57860666ddbfda842b9df3e6bfdc909360a8eea4bde302108f22b6d47d0cf21ad21a3f3275
   languageName: node
   linkType: hard
 

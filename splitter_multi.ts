@@ -1,12 +1,30 @@
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
-import { Document, Node, NodeIO, Primitive ,Mesh, PropertyType ,vec3} from '@gltf-transform/core';
+import {
+  Document,
+  Node,
+  NodeIO,
+  Primitive ,
+  Mesh,
+  JSONDocument,
+  PropertyType ,
+  vec3,
+  BufferUtils,
+  FileUtils,
+  GLTF,
+  GLB_BUFFER,
+  uuid
+} from '@gltf-transform/core';
+
 import * as gtf from '@gltf-transform/functions';
 import * as fs from 'fs/promises';
-import { error } from 'console';
-import { write, existsSync, mkdirSync, read } from 'fs';
+import { error, warn } from 'console';
+import { write, existsSync, mkdirSync, read , createReadStream} from 'fs';
 import { Command } from 'commander';
 import * as path from 'path';
+import { rejects } from 'assert';
+import { resourceLimits } from 'worker_threads';
+import { decode } from 'querystring';
 
 const CLI = new Command();
 
@@ -27,22 +45,34 @@ command.option('-i, --inputglb <path>', 'input GLB file path')
     .option('-o, --output <path>', 'output directory path " defaults to ./ "',"./")
     .requiredOption('-n, --name <name>', 'base filename ')
     .option('-m, --threshold <number>','target memory_threshold for each file " defaults to 40000000','40000000')
+    .option('-l, --limit <number>', 'file size limit in GB for streaming mode " defaults to 2','2')
     .parse(process.argv);
 
+const options = command.opts();
+if (!options.inputglb && !options.inputgltf) {
+    console.error('Error: You must provide either --inputglb or --inputgltf');
+    process.exit(1);
+}
+
+const inputFile = options.inputglb || options.inputgltf;
 
 const config: Config = {
-      fileName: command.opts().name,
-      inputPathGLB: command.opts().inputglb,
-      outputPath: command.opts().output,
-      threshold: command.opts().threshold,
-      inputPathGLTF: command.opts().inputgltf,
-      inputPathBIN: command.opts().inputbin
+      fileName: options.name,
+      inputPathGLB: options.inputglb,
+      outputPath: options.output,
+      threshold: options.threshold,
+      inputPathGLTF: options.inputgltf,
+      inputPathBIN: options.inputbin
 }
 const mem_threshold = Number(config.threshold);
 
 if(mem_threshold == null){
-  throw new Error("Memory threshold broken")
+  throw new Error("Memory threshold not entered")
 }
+
+// File size constants
+const FILE_SIZE_LIMIT = (Number(command.opts().limit) || 2) * 1024 * 1024 * 1024; // Configurable limit in bytes
+const CHUNK_SIZE = 64 * 1024 * 1024; // 64MB chunks for streaming
 
 const FILENAME =  config.fileName;
 const IN_GLTF = config.inputPathGLTF;
@@ -89,29 +119,308 @@ interface Manifest {
   errors: Array<string>,
 }
 
-async function readDoc(io: NodeIO):  Promise<Document>  {
+// Helper function to check file size
+async function checkFileSize(filePath: string): Promise<number> {
+  try {
+    const stats = await fs.stat(filePath);
+    return stats.size;
+  } catch (error) {
+    throw new Error(`Failed to get file size for ${filePath}: ${error}`);
+  }
+}
+
+// Helper function to read large files using streaming
+async function readLargeFile(filePath: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+      //highwater mark is max chunk size
+    const stream = createReadStream(filePath, { highWaterMark: CHUNK_SIZE });
+
+    let totalBytes = 0;
+    let lastProgressTime = Date.now();
+    const fileSize = require('fs').statSync(filePath).size;
+
+    console.log(`Reading large file: ${filePath} (${(fileSize / (1024 * 1024 * 1024)).toFixed(2)} GB)`);
+    console.log(`Using chunk size: ${(CHUNK_SIZE / (1024 * 1024)).toFixed(0)} MB`);
+
+    stream.on('data', (chunk: Buffer) => {
+      chunks.push(chunk);
+      totalBytes += chunk.length;
+
+      // Log progress every 5 seconds or every 100MB, whichever comes first
+      const now = Date.now();
+      const shouldLog = (now - lastProgressTime > 5000) || (totalBytes % (100 * 1024 * 1024) === 0);
+
+      if (shouldLog) {
+        const progress = ((totalBytes / fileSize) * 100).toFixed(1);
+        const speed = (totalBytes / (1024 * 1024)) / ((now - lastProgressTime) / 1000); // MB/s
+        console.log(`Reading progress: ${progress}% (${(totalBytes / (1024 * 1024 * 1024)).toFixed(2)} GB / ${(fileSize / (1024 * 1024 * 1024)).toFixed(2)} GB) - ${speed.toFixed(1)} MB/s`);
+        lastProgressTime = now;
+      }
+    });
+
+    stream.on('end', () => {
+      console.log(`Finished reading file: ${(totalBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+      resolve(Buffer.concat(chunks));
+    });
+
+    stream.on('error', (error) => {
+      reject(new Error(`Failed to read large file ${filePath}: ${error}`));
+    });
+  });
+}
+
+// Helper function to read large binary file for GLTF+BIN combination
+async function readLargeBinaryFile(filePath: string): Promise<Uint8Array> {
+    const chunks : Array<Uint8Array> = [];
+    return new Promise(async function(resolve ,reject) {
+    try{
+      const fd = await fs.open(filePath)
+      const readStream = fd.createReadStream();
+      // This shows how to use the node IO for the binary types
+      // https://gltf-transform.dev/modules/core/classes/NodeIO
+      readStream.on("data", function (chunk) {
+        // console.log("chunk pushed to buffer")
+        chunks.push(Buffer.from(chunk))
+      })
+
+      readStream.on("end", function (){
+        const buf = BufferUtils.concat(chunks)
+        resolve(buf)
+        reject(new Error(`failed to read file ${filePath}`))
+      })
+    }catch(e){
+        reject(new Error(e + " in readLargeBinaryFile"))
+    }
+            })
+
+  return readLargeFile(filePath);
+}
+
+// Helper function to read large GLTF file
+async function readLargeGLTFFile(filePath: string): Promise<string> {
+  const buffer = await readLargeFile(filePath);
+  return buffer.toString('utf8');
+}
+
+
+function isGLB(view: Uint8Array): boolean {
+	if (view.byteLength < 3 * Uint32Array.BYTES_PER_ELEMENT) return false;
+	const header = new Uint32Array(view.buffer, view.byteOffset, 3);
+	return header[0] === 0x46546c67 && header[1] === 2;
+}
+
+	function readResourcesInternal(jsonDoc: JSONDocument): void {
+		// NOTICE: This method may be called more than once during the loading
+		// process (e.g. WebIO.read) and should handle that safely.
+
+		function resolveResource(resource: GLTF.IBuffer | GLTF.IImage) {
+			if (!resource.uri) return;
+
+			if (resource.uri in jsonDoc.resources) {
+				BufferUtils.assertView(jsonDoc.resources[resource.uri]);
+				return;
+			}
+
+			if (resource.uri.match(/data:/)) {
+				// Rewrite Data URIs to something short and unique.
+				const resourceUUID = `__${uuid()}.${FileUtils.extension(resource.uri)}`;
+				jsonDoc.resources[resourceUUID] = BufferUtils.createBufferFromDataURI(resource.uri);
+				resource.uri = resourceUUID;
+			}
+		}
+
+		// Unpack images.
+		const images = jsonDoc.json.images || [];
+		images.forEach((image: GLTF.IImage) => {
+			if (image.bufferView === undefined && image.uri === undefined) {
+				throw new Error('Missing resource URI or buffer view.');
+			}
+
+			resolveResource(image);
+		});
+
+		// Unpack buffers.
+		const buffers = jsonDoc.json.buffers || [];
+		buffers.forEach(resolveResource);
+	}
+
+	function copyJSON(jsonDoc: JSONDocument): JSONDocument {
+		const { images, buffers } = jsonDoc.json;
+
+		jsonDoc = { json: { ...jsonDoc.json }, resources: { ...jsonDoc.resources } };
+
+		if (images) {
+			jsonDoc.json.images = images.map((image: any) => ({ ...image }));
+		}
+		if (buffers) {
+			jsonDoc.json.buffers = buffers.map((buffer: any) => ({ ...buffer }));
+		}
+
+		return jsonDoc;
+		}
+    ////deocode text
+   //function decodeText(array: Uint8Array): Array<string>{
+    //const decoder = new TextDecoder();
+
+    //console.log("first index location:",array.length/2,"last index location:" , array.length-1)
+    //return stringArray
+   //}
+
+   //decode json
+ function decodeJSON(array: Uint8Array): any{
+   try{
+    const decoder = new TextDecoder();
+    const stringArray: Array<string> = [];
+
+    // batch process strings to bypass maximum string size
+    for (let i = 0; i < Math.ceil(array.length/536870887) ;i++ ){
+      if(i+1 == Math.ceil(array.length/536870887)){
+        stringArray.push( decoder.decode( array.slice(i*536870887,array.length)))
+      }else{
+        stringArray.push(decoder.decode(array.slice(i*536870887,((i+1)*536870887)+1)))
+      }
+    }
+    const json = JSON.parse(stringArray.reduce((a,i)=> a+i)) as GLTF.IGLTF
+    console.log("first index location:",array.length/2,"last index location:" , array.length-1)
+    return json
+   }catch(e){
+     throw new Error(e);
+    }
+   }
+
+          // below is an implementation of a segment of io.readBinary
+  function bin_toJson(glb: Uint8Array): JSONDocument{
+        try{
+          //_binaryTonaryJson
+          //decode json chunk
+          const jsonChunkHeader = new Uint32Array(glb.buffer, glb.byteOffset + 12, 2);
+          const jsonByteOffset = 20;
+          const jsonByteLength = jsonChunkHeader[0];
+          // let jsonText
+          // try{
+
+          // jsonText =  decodeJSON(BufferUtils.toView(glb, jsonByteOffset, jsonByteLength));
+          // }catch(e){
+          //     throw new Error("\n" + e + "\n BufferUtils.decodeText Is broken \n")
+          //   }
+          // const json = JSON.parse(jsonText) as GLTF.IGLTF;
+          const json = decodeJSON(BufferUtils.toView(glb, jsonByteOffset, jsonByteLength));
+          //decode bin chunk
+
+          const binByteOffset = jsonByteOffset + jsonByteLength;
+
+          const binChunkHeader = new Uint32Array(glb.buffer, glb.byteOffset + binByteOffset, 2);
+          const binByteLength = binChunkHeader[0];
+          const binBuffer = BufferUtils.toView(glb, binByteOffset + 8, binByteLength);
+          // Error: Cannot create a string longer than 0x1fffffe8 characters thrown from below
+          const inputjsonDoc = {json, resources: {[GLB_BUFFER]: binBuffer}}
+
+          return inputjsonDoc
+       }catch(e){
+          throw new Error(e + "\n threw in bin_toJson \n")
+        }
+}
+
+async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc called');
   if(IN_GLB !== undefined){
     try{
-      return await io.read(IN_GLB);
-    }catch(e){
-      throw new Error(e + " \n failed to load glb")
-    }
-  }else if(IN_GLTF !== undefined && IN_BIN !== undefined ){
-    try{
-      return await io.read(IN_GLTF)
-      // console.log(IN_GLTF);
-      // const gltf = await io.readAsJSON(IN_GLTF);
-      // const binfile = await fs.readFile(IN_BIN)
-      // const bin = await io.readBinary(binfile);
-      // const doc = io.readJSON(gltf);
-      // console.log("document", doc, "\n", "bin", bin);
-      // gtf.copyToDocument(doc,bin,bin.getRoot())
+      const fileSize = await checkFileSize(IN_GLB);
+      console.log(`GLB file size: ${(fileSize / (1024 * 1024 * 1024)).toFixed(2)} GB`);
 
+      if (fileSize > FILE_SIZE_LIMIT) {
+        console.log(`Large file detected (>2GB), using streaming approach...`);
+        return new Promise(async (resolve,reject) => {
+          try{
+            const buffer = await readLargeBinaryFile(IN_GLB);
+            const glb = BufferUtils.toView(buffer)
+           // try{
+            // readResourcesInternal(jsonDoc);
+            // const jsonDoc = bin_toJson(glb)
+            // resolve(await io.readJSON(jsonDoc));
+            resolve(io.readBinary(glb));
+            }catch(e){
+              reject(e)
+            }
+        })
+
+      } else {
+        console.log(`Small file detected (≤2GB), using direct reading...`);
+        return await io.read(IN_GLB);
+      }
+    }catch(e){
+        throw(e + "\n error occured in readDoc ")
+      }
+  }else if(IN_GLTF !== undefined){
+    try{
+      // Check file sizes for GLTF and BIN files
+      const gltfSize = await checkFileSize(IN_GLTF);
+      const binSize = IN_BIN ? await checkFileSize(IN_BIN) : 0;
+      const totalSize = gltfSize + binSize;
+
+      console.log(`GLTF file size: ${(gltfSize / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+      if (IN_BIN) {
+        console.log(`BIN file size: ${(binSize / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+      } else {
+        console.log(`No BIN file provided`);
+      }
+      console.log(`Total size: ${(totalSize / (1024 * 1024 * 1024)).toFixed(2)} GB`);
+
+      if (totalSize > FILE_SIZE_LIMIT) {
+        console.log(`Large files detected (>2GB total), using streaming approach...`);
+
+        // Check if GLTF file is large
+        const isGLTFLarge = gltfSize > FILE_SIZE_LIMIT;
+        const isBINLarge = IN_BIN && binSize > FILE_SIZE_LIMIT;
+
+        let tempGLTFPath: string | null = null;
+        let tempBinPath: string | null = null;
+
+        try {
+          // Handle large GLTF file
+          if (isGLTFLarge) {
+            console.log(`Reading large GLTF file using streaming...`);
+            const gltfContent = await readLargeGLTFFile(IN_GLTF);
+            tempGLTFPath = IN_GLTF + '.temp';
+            await fs.writeFile(tempGLTFPath, gltfContent, 'utf8');
+          }
+
+          // Handle large BIN file (only if BIN file exists)
+          if (isBINLarge && IN_BIN) {
+            console.log(`Reading large BIN file using streaming...`);
+            const binBuffer = await readLargeBinaryFile(IN_BIN);
+            console.log('readbuffer finished')
+            tempBinPath = IN_BIN + '.temp';
+            await fs.writeFile(tempBinPath, binBuffer);
+            console.log('writefile Finished')
+          }
+
+          // Use the appropriate file paths (temp files if large, original if small)
+          const gltfPath = tempGLTFPath || IN_GLTF;
+
+          // Read the document using the appropriate paths
+          const result = await io.read(gltfPath);
+
+          // Clean up temp files
+          if (tempGLTFPath) await fs.unlink(tempGLTFPath);
+          if (tempBinPath) await fs.unlink(tempBinPath);
+
+          return result;
+        } catch (error) {
+          // Clean up temp files on error
+          if (tempGLTFPath) await fs.unlink(tempGLTFPath).catch(() => {});
+          if (tempBinPath) await fs.unlink(tempBinPath).catch(() => {});
+          throw error;
+        }
+      } else {
+        console.log(`Small files detected (≤2GB total), using direct reading...`);
+        return await io.read(IN_GLTF);
+      }
     }catch(e){
       throw new Error(e + " \n failed to load gltf")
     }
   }
-  throw new Error()
+  throw new Error("No valid input files provided")
 }
 
 // async function readDoc(io: NodeIO):Document{
@@ -129,14 +438,16 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
 //   throw new Error("something unexpected happened in readDoc")
 // }
 
-(async () => {
 
+(async () => {
+  // try{
   // Use proper path resolution to handle both absolute and relative paths
   var dir = path.isAbsolute(config.outputPath)
     ? config.outputPath
     : path.resolve(process.cwd(), config.outputPath);
 
   console.log("Output directory:", dir);
+  console.log(`File size limit for streaming mode: ${(FILE_SIZE_LIMIT / (1024 * 1024 * 1024)).toFixed(1)} GB`);
   if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
   }
@@ -150,9 +461,7 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
         'meshopt.decoder': MeshoptDecoder,
         'meshopt.encoder': MeshoptEncoder,
       });
-
     const document = await readDoc(io)
-
       // File stats
       // const symSegs = Math.ceil(fs.stat(IN).size / 80);
       // const stats = await fs.stat(IN);
@@ -184,27 +493,45 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
           }
       }
     }
+      document.getRoot().listNodes().forEach((node)=>{
+        console.log(node.getName())
+      })
+
       // console.log("nullmesh\n",nullmesh,"\n")
 
-      // console.log("Original Doc")
-      // console.log("____________________________________________________________________________________________________ \n")
-      // console.log("nodelist" ,document.getRoot().listNodes().length)
-      // console.log("accessorslist" ,document.getRoot().listAccessors().length)
-      // console.log("mesheslist" ,document.getRoot().listMeshes().length)
-      // console.log("sceneslist" ,document.getRoot().listScenes().length)
-      // console.log("cameraslist" ,document.getRoot().listCameras().length)
-      // console.log("materialsList" ,document.getRoot().listMaterials().length)
+      console.log("Original Doc")
+      console.log("____________________________________________________________________________________________________ \n")
+      console.log("nodelist" ,document.getRoot().listNodes().length)
+      console.log("accessorslist" ,document.getRoot().listAccessors().length)
+      console.log("mesheslist" ,document.getRoot().listMeshes().length)
+      console.log("sceneslist" ,document.getRoot().listScenes().length)
+      console.log("cameraslist" ,document.getRoot().listCameras().length)
+      console.log("materialsList" ,document.getRoot().listMaterials().length)
+      console.log("bufferList" ,document.getRoot().listBuffers().length)
+//       document.getRoot().listAccessors().forEach((accessor)=>{
+//         console.log(accessor)
+
+//       })
+      // console.log("nodelist" ,document.getRoot().listNodes())
+
+      // console.log("accessorslist" ,document.getRoot().listAccessors())
+      // console.log("mesheslist" ,document.getRoot().listMeshes())
+      // console.log("bufferList" ,document.getRoot().listBuffers())
+      // console.log("sceneslist" ,document.getRoot().listScenes())
+      // console.log("cameraslist" ,document.getRoot().listCameras())
+
     // Use to check if there are detatched elements
     // await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH]})) ;
     await document.transform(gtf.prune({propertyTypes: [PropertyType.MESH,PropertyType.NODE]})) ;
     // await document.transform(gtf.dedup({propertyTypes: [PropertyType.MESH]})) ;
-      // console.log("\n\n after prune\n\n__________________________________________________________________________________________________ \n")
-      // console.log("nodelist" ,document.getroot().listnodes().length)
-      // console.log("accessorslist" ,document.getroot().listaccessors().length)
-      // console.log("mesheslist" ,document.getroot().listmeshes().length)
-      // console.log("sceneslist" ,document.getroot().listscenes().length)
-      // console.log("cameraslist" ,document.getroot().listcameras().length)
-      // console.log("materialsList" ,document.getRoot().listMaterials().length)
+      console.log("\n\n after prune\n\n__________________________________________________________________________________________________ \n")
+      console.log("nodelist" ,document.getRoot().listNodes().length)
+      console.log("accessorslist" ,document.getRoot().listAccessors().length)
+      console.log("bufferList" ,document.getRoot().listBuffers().length)
+      console.log("mesheslist" ,document.getRoot().listMeshes().length)
+      console.log("sceneslist" ,document.getRoot().listScenes().length)
+      console.log("cameraslist" ,document.getRoot().listCameras().length)
+      console.log("materialsList" ,document.getRoot().listMaterials().length)
     const sorted = sort_by_threshold(document ,mem_threshold);
 
     // console.log(sorted[0][0].getName());
@@ -360,6 +687,10 @@ async function readDoc(io: NodeIO):  Promise<Document>  {
   }
 
 
+function split_mesh(mesh: Mesh, size: number): Array<{mesh: Mesh, size: number}>{
+  console.log("Primitives " , mesh.listPrimitives)
+  return new Array<{mesh: Mesh, size: number}>
+}
 
 
 
@@ -421,6 +752,29 @@ function sort_by_threshold(document: Document, mem_threshold: number):Array<Arra
 
           // Use a greedy algorithm to disribute meshes across bins
           const oversizedMeshes = meshesWithSize.filter(item => item.size > targetSizePerBin);
+
+          if (meshesWithSize.length < optimalBinCount){
+            console.log(`GLB has more bins than total meshes ... \n splitting oversizedMeshes`)
+            // determining the number of requred meshes, and getting the largest oversizedMeshes to split.
+            const requiredMeshes = meshesWithSize.length - optimalBinCount;
+            const meshesToSplit = oversizedMeshes.slice(0, requiredMeshes-1);
+
+            // remove old single mesh, add two smaller meshes in its place.
+            // run split rate on each required overside mesh
+            meshesToSplit.forEach(mesh=>{
+              // Remove a mesh to split from the list of meshes
+              const index = meshesWithSize.indexOf(mesh);
+              meshesWithSize.splice(index,1);
+
+              // Split meshes
+              const split_meshes = split_mesh(mesh.mesh,mesh.size);
+              meshesWithSize.concat(split_meshes);
+            })
+
+            // Reorder meshes by size
+            meshesWithSize.sort((a,b)=> b.size - a.size);
+
+          }
           const normalMeshes = meshesWithSize.filter(item => item.size <= targetSizePerBin);
 
           // Place each oversized mesh in its own bin
@@ -430,7 +784,6 @@ function sort_by_threshold(document: Document, mem_threshold: number):Array<Arra
               bins[binIndex].push(mesh);
               binSizes[binIndex] += size;
           });
-
           normalMeshes.forEach(({mesh,size})=>{
 
 // Find the bin that has the most space available but can still fit this mesh
