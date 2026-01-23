@@ -1,4 +1,5 @@
-import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
+
+
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import {
   Document,
@@ -15,8 +16,8 @@ import {
   GLB_BUFFER,
   uuid
 } from '@gltf-transform/core';
-
 import * as gtf from '@gltf-transform/functions';
+import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import * as fs from 'fs/promises';
 import { error, warn } from 'console';
 import { write, existsSync, mkdirSync, read , createReadStream} from 'fs';
@@ -25,9 +26,14 @@ import * as path from 'path';
 import { rejects } from 'assert';
 import { resourceLimits } from 'worker_threads';
 import { decode } from 'querystring';
+import { json } from 'stream/consumers';
 
 const CLI = new Command();
 
+enum ChunkType {
+	JSON = 0x4e4f534a,
+	BIN = 0x004e4942,
+}
 interface Config {
   inputPathGLB: string;
   outputPath: string;
@@ -171,10 +177,10 @@ async function readLargeFile(filePath: string): Promise<Buffer> {
 }
 
 // Helper function to read large binary file for GLTF+BIN combination
-async function readLargeBinaryFile(filePath: string): Promise<Uint8Array> {
+async function readLargeBinaryFile(filePath: string): Promise<Uint8Array>{
     const chunks : Array<Uint8Array> = [];
     return new Promise(async function(resolve ,reject) {
-    try{
+    // try{
       const fd = await fs.open(filePath)
       const readStream = fd.createReadStream();
       // This shows how to use the node IO for the binary types
@@ -187,11 +193,11 @@ async function readLargeBinaryFile(filePath: string): Promise<Uint8Array> {
       readStream.on("end", function (){
         const buf = BufferUtils.concat(chunks)
         resolve(buf)
-        reject(new Error(`failed to read file ${filePath}`))
+        // reject(new Error(`failed to read file ${filePath}`))
       })
-    }catch(e){
-        reject(new Error(e + " in readLargeBinaryFile"))
-    }
+    // }catch(e){
+    //     reject(new Error(e + " in readLargeBinaryFile"))
+    // }
             })
 
   return readLargeFile(filePath);
@@ -270,57 +276,122 @@ function isGLB(view: Uint8Array): boolean {
    //decode json
  function decodeJSON(array: Uint8Array): any{
    try{
-    const decoder = new TextDecoder();
-    const stringArray: Array<string> = [];
+    const decoder = new TextDecoder().decode(array);
+    return decoder
+    // const stringArray: Array<string> = [];
 
     // batch process strings to bypass maximum string size
-    for (let i = 0; i < Math.ceil(array.length/536870887) ;i++ ){
-      if(i+1 == Math.ceil(array.length/536870887)){
-        stringArray.push( decoder.decode( array.slice(i*536870887,array.length)))
-      }else{
-        stringArray.push(decoder.decode(array.slice(i*536870887,((i+1)*536870887)+1)))
-      }
-    }
-    const json = JSON.parse(stringArray.reduce((a,i)=> a+i)) as GLTF.IGLTF
-    console.log("first index location:",array.length/2,"last index location:" , array.length-1)
-    return json
+    // for (let i = 0; i < Math.ceil(array.length/536870887) ;i++ ){
+    //   if(i+1 == Math.ceil(array.length/536870887)){
+    //     stringArray.push( decoder.decode( array.slice(i*536870887,array.length)))
+    //   }else{
+    //     stringArray.push(decoder.decode(array.slice(i*536870887,((i+1)*536870887)+1)))
+    //   }
+    // }
+    // const json = JSON.parse(stringArray.reduce((a,i)=> a+i)) as GLTF.IGLTF
+    // console.log("first index location:",array.length/2,"last index location:" , array.length-1)
+    // return json
    }catch(e){
      throw new Error(e);
     }
    }
 
           // below is an implementation of a segment of io.readBinary
-  function bin_toJson(glb: Uint8Array): JSONDocument{
-        try{
-          //_binaryTonaryJson
-          //decode json chunk
-          const jsonChunkHeader = new Uint32Array(glb.buffer, glb.byteOffset + 12, 2);
-          const jsonByteOffset = 20;
-          const jsonByteLength = jsonChunkHeader[0];
-          // let jsonText
-          // try{
+  //function bin_toJson(glb: Uint8Array): JSONDocument{
+  //      // try{
+  //        //_binaryTonaryJson
+  //        //decode json chunk
+  //        const jsonChunkHeader = new Uint32Array(glb.buffer, glb.byteOffset + 12, 2);
+  //        const jsonByteOffset = 20;
+  //        const jsonByteLength = jsonChunkHeader[0];
+  //        // try{
+  //        // convert
+  //        console.log('create view of typed array')
+  //        const glb2view = BufferUtils.toView(glb, jsonByteOffset, jsonByteLength)
 
-          // jsonText =  decodeJSON(BufferUtils.toView(glb, jsonByteOffset, jsonByteLength));
-          // }catch(e){
-          //     throw new Error("\n" + e + "\n BufferUtils.decodeText Is broken \n")
-          //   }
-          // const json = JSON.parse(jsonText) as GLTF.IGLTF;
-          const json = decodeJSON(BufferUtils.toView(glb, jsonByteOffset, jsonByteLength));
-          //decode bin chunk
+  //        console.log('attemping to decode json')
+  //        const jsonText =  decodeJSON(glb2view);
+  //        // }catch(e){
+  //        //     throw new Error("\n" + e + "\n BufferUtils.decodeText Is broken \n")
+  //        //   }
+  //        const json = JSON.parse(jsonText) as GLTF.IGLTF;
+  //        // const json = decodeJSON(BufferUtils.toView(glb, jsonByteOffset, jsonByteLength));
+  //        //
 
-          const binByteOffset = jsonByteOffset + jsonByteLength;
 
-          const binChunkHeader = new Uint32Array(glb.buffer, glb.byteOffset + binByteOffset, 2);
-          const binByteLength = binChunkHeader[0];
-          const binBuffer = BufferUtils.toView(glb, binByteOffset + 8, binByteLength);
-          // Error: Cannot create a string longer than 0x1fffffe8 characters thrown from below
-          const inputjsonDoc = {json, resources: {[GLB_BUFFER]: binBuffer}}
+  //        //decode bin chunk
 
-          return inputjsonDoc
-       }catch(e){
-          throw new Error(e + "\n threw in bin_toJson \n")
-        }
-}
+  //        const binByteOffset = jsonByteOffset + jsonByteLength;
+  //        if (glb.byteLength <= binByteOffset) {
+  //              return { json, resources: {} };
+  //            }
+		//const binChunkHeader = new Uint32Array(glb.buffer, glb.byteOffset + binByteOffset, 2);
+		//if (binChunkHeader[1] !== ChunkType.BIN) {
+			//// Allow GLB files without BIN chunk, but with unknown chunk
+			//// Spec: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#chunks-overview
+			//return { json, resources: {} };
+		//}
+  //        const binByteLength = binChunkHeader[0];
+  //        const binBuffer = BufferUtils.toView(glb, binByteOffset + 8, binByteLength);
+
+		//return { json, resources: { [GLB_BUFFER]: binBuffer } };
+  //        // Error: Cannot create a string longer than 0x1fffffe8 characters thrown from below
+  //        // const inputjsonDoc = {json, resources: {[GLB_BUFFER]: binBuffer}}
+
+  //        // return inputjsonDoc
+  //     // }catch(e){
+  //     //    throw new Error(e + "\n threw in bin_toJson \n")
+  //      // }
+//}
+function _copyJSON(jsonDoc: JSONDocument): JSONDocument {
+		const { images, buffers } = jsonDoc.json;
+
+		jsonDoc = { json: { ...jsonDoc.json }, resources: { ...jsonDoc.resources } };
+
+		if (images) {
+			jsonDoc.json.images = images.map((image) => ({ ...image }));
+		}
+		if (buffers) {
+			jsonDoc.json.buffers = buffers.map((buffer) => ({ ...buffer }));
+		}
+
+		return jsonDoc;
+	}
+
+	function _readResourcesInternal(jsonDoc: JSONDocument): void {
+		// NOTICE: This method may be called more than once during the loading
+		// process (e.g. WebIO.read) and should handle that safely.
+
+		function resolveResource(resource: GLTF.IBuffer | GLTF.IImage) {
+			if (!resource.uri) return;
+
+			if (resource.uri in jsonDoc.resources) {
+				BufferUtils.assertView(jsonDoc.resources[resource.uri]);
+				return;
+			}
+
+			if (resource.uri.match(/data:/)) {
+				// Rewrite Data URIs to something short and unique.
+				const resourceUUID = `__${uuid()}.${FileUtils.extension(resource.uri)}`;
+				jsonDoc.resources[resourceUUID] = BufferUtils.createBufferFromDataURI(resource.uri);
+				resource.uri = resourceUUID;
+			}
+		}
+
+		// Unpack images.
+		const images = jsonDoc.json.images || [];
+		images.forEach((image: GLTF.IImage) => {
+			if (image.bufferView === undefined && image.uri === undefined) {
+				throw new Error('Missing resource URI or buffer view.');
+			}
+
+			resolveResource(image);
+		});
+
+		// Unpack buffers.
+		const buffers = jsonDoc.json.buffers || [];
+		buffers.forEach(resolveResource);
+	}
 
 async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc called');
   if(IN_GLB !== undefined){
@@ -331,17 +402,34 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
       if (fileSize > FILE_SIZE_LIMIT) {
         console.log(`Large file detected (>2GB), using streaming approach...`);
         return new Promise(async (resolve,reject) => {
-          try{
+          // try{
             const buffer = await readLargeBinaryFile(IN_GLB);
-            const glb = BufferUtils.toView(buffer)
-           // try{
+
+
+            // const glb = BufferUtils.toView(buffer)
+            // console.log('glb check',glb)
+            // try{
+            //
             // readResourcesInternal(jsonDoc);
-            // const jsonDoc = bin_toJson(glb)
+            //readJson document
+            // let jsonDoc = bin_toJson(glb)
+            // jsonDoc = _copyJSON(jsonDoc)
+            // this._readResourcesInternal(jsonDoc)
+
+            // console.log('jsondoc',jsonDoc)
             // resolve(await io.readJSON(jsonDoc));
-            resolve(io.readBinary(glb));
-            }catch(e){
-              reject(e)
-            }
+            //
+            // this is the same as
+            resolve(await io.readBinary(buffer))
+            // this
+            // const json = await io.binaryToJSON(buffer)
+
+            // resolve(await io.readJSON(json))
+            // console.log(readJson)
+            // resolve(readBin);
+            // }catch(e){
+            //   reject(e)
+            // }
         })
 
       } else {

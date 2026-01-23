@@ -205,36 +205,36 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@gltf-transform/core@npm:^4.2.1":
-  version: 4.2.1
-  resolution: "@gltf-transform/core@npm:4.2.1"
+"@gltf-transform/core@npm:^4.3.0":
+  version: 4.3.0
+  resolution: "@gltf-transform/core@npm:4.3.0"
   dependencies:
-    property-graph: "npm:^3.0.0"
-  checksum: 10c0/6f76545b22218a7ba771066af1a8eaf52cbbb1da01a1e159b586761ddc954006795a245927534329c915be81bcd431070a66949efe961043e23e520b1debd7fe
+    property-graph: "npm:^4.0.0"
+  checksum: 10c0/f8bc66fff0552bc7299b7abda03fe68aa2fbf0ab84aa2885e3e4c3206b85150baa563f2e5f7430477c30289a08230f542666603db35c521be4ced8971c0769be
   languageName: node
   linkType: hard
 
-"@gltf-transform/extensions@npm:^4.2.1":
-  version: 4.2.1
-  resolution: "@gltf-transform/extensions@npm:4.2.1"
+"@gltf-transform/extensions@npm:^4.3.0":
+  version: 4.3.0
+  resolution: "@gltf-transform/extensions@npm:4.3.0"
   dependencies:
-    "@gltf-transform/core": "npm:^4.2.1"
+    "@gltf-transform/core": "npm:^4.3.0"
     ktx-parse: "npm:^1.0.1"
-  checksum: 10c0/286a5c82af669235282d32a8c6fbcf4354ebae23e8048d940c9c3f666b2fde00a9ae6e128a6ed0a885472f478a1a34ac41dc432a2f39190e035e2cebe80b325e
+  checksum: 10c0/97686cc51b04a4410bc4ca5dea44e470165eaa3ec08b717109b2a925e58620e9e5dbe478b1da23f228c6540c405bf1ec69de6d9a22c372573b27ddc4ebe9a077
   languageName: node
   linkType: hard
 
-"@gltf-transform/functions@npm:^4.2.1":
-  version: 4.2.1
-  resolution: "@gltf-transform/functions@npm:4.2.1"
+"@gltf-transform/functions@npm:^4.3.0":
+  version: 4.3.0
+  resolution: "@gltf-transform/functions@npm:4.3.0"
   dependencies:
-    "@gltf-transform/core": "npm:^4.2.1"
-    "@gltf-transform/extensions": "npm:^4.2.1"
+    "@gltf-transform/core": "npm:^4.3.0"
+    "@gltf-transform/extensions": "npm:^4.3.0"
     ktx-parse: "npm:^1.0.1"
     ndarray: "npm:^1.0.19"
     ndarray-lanczos: "npm:^0.3.0"
     ndarray-pixels: "npm:^5.0.1"
-  checksum: 10c0/c95828bac692dd605424934dcb3c5a721bdac7d117f1eafaf688751eddac6a7f5fb1e3e5d2065efe11d551f1066e383b76f155e685a4e70aec09f96dbe4a5d6f
+  checksum: 10c0/c7514ed250baa6bff8e04f38cf97efc2e61de2cd46600d5d2243961e0c498b881fce27d32eabdcf9afd1421ff9a550657a14fcca4ac52104241d05cda78c706e
   languageName: node
   linkType: hard
 
@@ -836,12 +836,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^24.0.13":
-  version: 24.3.0
-  resolution: "@types/node@npm:24.3.0"
+"@types/node@npm:^25.0.10":
+  version: 25.0.10
+  resolution: "@types/node@npm:25.0.10"
   dependencies:
-    undici-types: "npm:~7.10.0"
-  checksum: 10c0/96bdeca01f690338957c2dcc92cb9f76c262c10398f8d91860865464412b0f9d309c24d9b03d0bdd26dd47fa7ee3f8227893d5c89bc2009d919a525a22512030
+    undici-types: "npm:~7.16.0"
+  checksum: 10c0/9edc3c812b487c32c76eebac7c87acae1f69515a0bc3f6b545806d513eb9e918c3217bf751dc93da39f60e06bf1b0caa92258ef3a6dd6457124b2e761e54f61f
   languageName: node
   linkType: hard
 
@@ -2180,10 +2180,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"property-graph@npm:^3.0.0":
-  version: 3.0.0
-  resolution: "property-graph@npm:3.0.0"
-  checksum: 10c0/689c5377535db079f506e8715761e83adeb7aa25b59de91518b45a22718c6f33edffea2c27bf3c12b484156ef457cead97cdbb163624e47641c8afda26c8f74d
+"property-graph@npm:^4.0.0":
+  version: 4.0.0
+  resolution: "property-graph@npm:4.0.0"
+  checksum: 10c0/912047db311a903ec062c11681879998397a60fc6e723a475cb0956ecb6769d72792f0e653bc9a0ea7d5409b13eb03d5b3134ff8a03640d1c3614b4d3145c158
   languageName: node
   linkType: hard
 
@@ -2296,17 +2296,18 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "root-workspace-0b6124@workspace:."
   dependencies:
-    "@gltf-transform/core": "npm:^4.2.1"
-    "@gltf-transform/extensions": "npm:^4.2.1"
-    "@gltf-transform/functions": "npm:^4.2.1"
+    "@gltf-transform/core": "npm:^4.3.0"
+    "@gltf-transform/extensions": "npm:^4.3.0"
+    "@gltf-transform/functions": "npm:^4.3.0"
     "@types/core-js": "npm:^2.5.8"
-    "@types/node": "npm:^24.0.13"
+    "@types/node": "npm:^25.0.10"
     "@xeokit/xeokit-convert": "npm:^1.3.1"
     commander: "npm:^14.0.0"
     draco3dgltf: "npm:^1.5.7"
     meshoptimizer: "npm:^0.16.1"
     ts-node: "npm:^10.2.1"
     tsx: "npm:^4.20.3"
+    typescript: "npm:^5.9.3"
   languageName: unknown
   linkType: soft
 
@@ -2707,10 +2708,30 @@ __metadata:
   languageName: node
   linkType: hard
 
-"undici-types@npm:~7.10.0":
-  version: 7.10.0
-  resolution: "undici-types@npm:7.10.0"
-  checksum: 10c0/8b00ce50e235fe3cc601307f148b5e8fb427092ee3b23e8118ec0a5d7f68eca8cee468c8fc9f15cbb2cf2a3797945ebceb1cbd9732306a1d00e0a9b6afa0f635
+"typescript@npm:^5.9.3":
+  version: 5.9.3
+  resolution: "typescript@npm:5.9.3"
+  bin:
+    tsc: bin/tsc
+    tsserver: bin/tsserver
+  checksum: 10c0/6bd7552ce39f97e711db5aa048f6f9995b53f1c52f7d8667c1abdc1700c68a76a308f579cd309ce6b53646deb4e9a1be7c813a93baaf0a28ccd536a30270e1c5
+  languageName: node
+  linkType: hard
+
+"typescript@patch:typescript@npm%3A^5.9.3#optional!builtin<compat/typescript>":
+  version: 5.9.3
+  resolution: "typescript@patch:typescript@npm%3A5.9.3#optional!builtin<compat/typescript>::version=5.9.3&hash=5786d5"
+  bin:
+    tsc: bin/tsc
+    tsserver: bin/tsserver
+  checksum: 10c0/ad09fdf7a756814dce65bc60c1657b40d44451346858eea230e10f2e95a289d9183b6e32e5c11e95acc0ccc214b4f36289dcad4bf1886b0adb84d711d336a430
+  languageName: node
+  linkType: hard
+
+"undici-types@npm:~7.16.0":
+  version: 7.16.0
+  resolution: "undici-types@npm:7.16.0"
+  checksum: 10c0/3033e2f2b5c9f1504bdc5934646cb54e37ecaca0f9249c983f7b1fc2e87c6d18399ebb05dc7fd5419e02b2e915f734d872a65da2e3eeed1813951c427d33cc9a
   languageName: node
   linkType: hard
 
