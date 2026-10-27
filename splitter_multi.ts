@@ -393,13 +393,75 @@ function _copyJSON(jsonDoc: JSONDocument): JSONDocument {
 		buffers.forEach(resolveResource);
 	}
 
+// Loader for GLBs whose 32-bit size fields have wrapped (files > 4 GiB, outside the GLB spec).
+// Recomputes the BIN length from the file size, unwraps bufferView byteOffsets, and hands
+// the result to io.readJSON so gltf-transform never sees the truncated header values.
+const U32 = 2 ** 32;
+async function readOversizedGLB(io: NodeIO, filePath: string): Promise<Document> {
+  const fh = await fs.open(filePath, 'r');
+  try {
+    const fileSize = (await fh.stat()).size;
+    const head = Buffer.alloc(20);
+    await fh.read(head, 0, 20, 0);
+    if (head.readUInt32LE(0) !== 0x46546c67) throw new Error('Not a GLB file (bad magic)');
+    if (head.readUInt32LE(16) !== ChunkType.JSON) throw new Error('First GLB chunk is not JSON');
+    if (head.readUInt32LE(8) !== fileSize % U32) throw new Error('GLB header length inconsistent with file size');
+
+    const jsonLen = head.readUInt32LE(12);
+    const jsonBuf = Buffer.alloc(jsonLen);
+    await fh.read(jsonBuf, 0, jsonLen, 20);
+    const json = JSON.parse(jsonBuf.toString('utf8')) as GLTF.IGLTF;
+
+    const binHeaderOffset = 20 + jsonLen;
+    const binStart = binHeaderOffset + 8;
+    const binLen = fileSize - binStart; // true length; stored value is binLen mod 2^32
+    const binHeader = Buffer.alloc(8);
+    await fh.read(binHeader, 0, 8, binHeaderOffset);
+    if (binHeader.readUInt32LE(4) !== ChunkType.BIN) throw new Error('Second GLB chunk is not BIN');
+    if (binHeader.readUInt32LE(0) !== binLen % U32) throw new Error('BIN chunk length inconsistent with file size');
+
+    console.log(`Reading BIN chunk: ${(binLen / (1024 ** 3)).toFixed(2)} GB`);
+    const bin = Buffer.allocUnsafe(binLen);
+    for (let pos = 0; pos < binLen; ) {
+      const { bytesRead } = await fh.read(bin, pos, Math.min(CHUNK_SIZE, binLen - pos), binStart + pos);
+      if (!bytesRead) throw new Error(`Unexpected EOF at BIN offset ${pos}`);
+      pos += bytesRead;
+    }
+
+    // Unwrap 32-bit bufferView offsets (exporter wrote them mod 2^32; views are sequential).
+    let wrap = 0, prev = 0, end = 0, wraps = 0;
+    for (const bv of json.bufferViews ?? []) {
+      const o = bv.byteOffset ?? 0;
+      if (o < prev) { wrap += U32; wraps++; }
+      prev = o;
+      bv.byteOffset = o + wrap;
+      if (bv.byteOffset < end) throw new Error('Cannot unwrap bufferView offsets: views are not sequential');
+      end = bv.byteOffset + bv.byteLength;
+    }
+    if (end > binLen) throw new Error(`bufferViews extend past BIN chunk (${end} > ${binLen})`);
+    if (!json.buffers || json.buffers.length !== 1) throw new Error('Expected exactly one buffer in GLB');
+    json.buffers[0].byteLength = binLen;
+    console.log(`Unwrapped ${wraps} bufferView offset overflow(s); buffer byteLength set to ${binLen}`);
+
+    return await io.readJSON({
+      json,
+      resources: { [GLB_BUFFER]: new Uint8Array(bin.buffer, bin.byteOffset, binLen) },
+    });
+  } finally {
+    await fh.close();
+  }
+}
+
 async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc called');
   if(IN_GLB !== undefined){
     try{
       const fileSize = await checkFileSize(IN_GLB);
       console.log(`GLB file size: ${(fileSize / (1024 * 1024 * 1024)).toFixed(2)} GB`);
 
-      if (fileSize > FILE_SIZE_LIMIT) {
+      if (fileSize >= U32) {
+        console.log(`Oversized GLB detected (>=4GB, 32-bit size fields wrapped), using oversized loader...`);
+        return await readOversizedGLB(io, IN_GLB);
+      } else if (fileSize > FILE_SIZE_LIMIT) {
         console.log(`Large file detected (>2GB), using streaming approach...`);
         return new Promise(async (resolve,reject) => {
           // try{
