@@ -27,6 +27,21 @@ import { rejects } from 'assert';
 import { resourceLimits } from 'worker_threads';
 import { decode } from 'querystring';
 import { json } from 'stream/consumers';
+import { spawnSync } from 'child_process';
+import * as v8 from 'v8';
+
+// Large models exceed Node's default heap limit (~2-4GB). Callers such as the Revit
+// exporter launch us without --max-old-space-size, so relaunch this same command
+// (node + ts-node bin + script + args) with a larger heap. stdio and exit code pass through.
+const HEAP_MB = 16384;
+if (!process.env.SPLITTER_RELAUNCHED &&
+    v8.getHeapStatistics().heap_size_limit < HEAP_MB * 1024 * 1024 * 0.9) {
+  const r = spawnSync(process.execPath,
+    [`--max-old-space-size=${HEAP_MB}`, ...process.execArgv, ...process.argv.slice(1)],
+    { stdio: 'inherit', env: { ...process.env, SPLITTER_RELAUNCHED: '1' } });
+  if (r.error) console.error(`Splitter relaunch failed: ${r.error.message}`);
+  process.exit(r.status ?? 1);
+}
 
 const CLI = new Command();
 
@@ -590,7 +605,7 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
 
 
 (async () => {
-  // try{
+  try{
   // Use proper path resolution to handle both absolute and relative paths
   var dir = path.isAbsolute(config.outputPath)
     ? config.outputPath
@@ -643,9 +658,6 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
           }
       }
     }
-      document.getRoot().listNodes().forEach((node)=>{
-        console.log(node.getName())
-      })
 
       // console.log("nullmesh\n",nullmesh,"\n")
 
@@ -686,12 +698,16 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
 
     // console.log(sorted[0][0].getName());
     // createPartitions(document,sorted)
-    const doc_list = writeNewDocuments(document,sorted,io);
-    console.log("Document List:",doc_list);
-    const manifest = makeManifest(IN_GLB,doc_list,document);
-  // } catch (e) {
-  //     throw new Error('Script failed:\n'+ e);
-  //   }
+    const doc_list = await writeNewDocuments(document,sorted,io);
+    console.log(`Wrote ${doc_list.length} split files`);
+    await makeManifest(IN_GLB,doc_list,document);
+  } catch (e) {
+    // Keep this short: the Revit exporter only captures the first 1KB of output.
+    const err = e instanceof Error ? e : new Error(String(e));
+    console.error(`SPLITTER FAILED: ${err.message}`);
+    if (err.stack) console.error(err.stack.split('\n').slice(1, 4).join('\n'));
+    process.exit(1);
+  }
   })();
 
 //   async function createPartitions (document: Document, sorted : Array<Array<Mesh>>) {
@@ -737,14 +753,14 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
     })
   }
 
-  function writeFile(document : Document , index: number ,io: NodeIO): string{
+  async function writeFile(document : Document , index: number ,io: NodeIO): Promise<string>{
       const filename = OUT.concat("_",String(index).concat(".glb"));
-      io.write(filename,document)
+      await io.write(filename,document)
       const outname = filename.split("\/")
       return outname[outname.length-1];
   }
 
-  function writeNewDocuments(document: Document, sorted : Array<Array<Mesh>> ,io: NodeIO): Array<string>{
+  async function writeNewDocuments(document: Document, sorted : Array<Array<Mesh>> ,io: NodeIO): Promise<Array<string>>{
       const filename_list : Array<string> = [] ;
       const sourceMeshMap = new Map();
       const sourceNodeMap = new Map();
@@ -762,7 +778,9 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
     // console.log(sorted)
     const doc_list : Array<Document> = [];
     // console.log("sorted legnth", sorted.length);
-    sorted.forEach((sorted_meshes,index)=>{
+    // Sequential loop so each split is written (and released) before the next is built.
+    for (let index = 0; index < sorted.length; index++) {
+      const sorted_meshes = sorted[index];
       const newDoc = new Document;
 
       const tmpAccessor = newDoc.createAccessor()
@@ -830,8 +848,8 @@ async function readDoc(io: NodeIO): Promise<Document> { console.log('readDoc cal
     //     console.log("materialsList" ,newDoc.getRoot().listMaterials().length)
     //   console.log("____________________________________________________________________________________________________ \n"
     //   ,"\n\n\n")
-     filename_list.push(writeFile(newDoc,index,io));
-    })
+     filename_list.push(await writeFile(newDoc,index,io));
+    }
     // accessor.
     return filename_list;
   }
